@@ -5,7 +5,7 @@ No `.env` files needed — the frontend just fetches directly from the backend.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 svelte-fastapi-template/
