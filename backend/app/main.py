@@ -11,10 +11,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+voorbeeld = {
+    "id" :  "1",
+    "titel" :  "test-titel",
+    "description" : "test-description",
+    "open" : [],
+    "in progress": [],
+    "done":  []
+}
 
 @app.get("/")
 async def read_root():
     return {"Hello": "World"}
+
+@app.get("/getItems")
+async def get_items():
+    return voorbeeld
 
 
 @app.get("/items/{item_id}")
