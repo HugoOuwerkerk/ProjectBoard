@@ -13,6 +13,38 @@
     return await res.json();
   }
 
+  async function addTask() {
+    const payload = {
+      title: "Test Task",
+      desc: "This is just a test task",
+      labels: ["feature", "ui"]
+    };
+
+    const res = await fetch("http://127.0.0.1:8000/projects/1/tasks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    project = data;
+    console.log("Updated project:", data);
+  }
+
+  async function deleteTask() {
+    
+  }
+
+  async function updateTask() {
+    
+  }
+
+  async function editProject() {
+    
+  }
+
   onMount(async () => {
     project = await getProject();
   });
@@ -56,13 +88,13 @@
       <h2>Notes</h2>
       <ul>
         {#each project.notes as note}
-        <li>{note}</li>
+        <li>{note.desc}</li>
         {/each}
       </ul>        
     </aside>
 
     <div class="details-actions">
-      <button class="btn small_edit" data-action="edit-details">Edit</button>
+      <button class="btn small_edit" data-action="edit-details" onclick={() => (editProject())}>Edit</button>
     </div>
   </section>
 
@@ -70,7 +102,7 @@
   <div class="col">
     <div class="col-header">
       <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
-      <button class="btn small" aria-label="Add open task" data-action="add-task" data-status="open">
+      <button class="btn small" aria-label="Add open task" data-action="add-task" data-status="open" onclick={() => (addTask())}>
         <svg viewBox="0 0 24 24" class="icon">
           <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/>
         </svg>
@@ -90,7 +122,7 @@
             {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
             {#if task.labels}
               <div class="labels">
-                {#each task.labels as label}<span class="label">{label}</span>{/each}
+                {#each task.labels as label}<span class="label">{label.name}</span>{/each}
               </div>
             {/if}
           {/if}
@@ -116,7 +148,7 @@
             {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
             {#if task.labels}
               <div class="labels">
-                {#each task.labels as label}<span class="label">{label}</span>{/each}
+                {#each task.labels as label}<span class="label">{label.name}</span>{/each}
               </div>
             {/if}
           {/if}
@@ -142,7 +174,7 @@
             {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
             {#if task.labels}
               <div class="labels">
-                {#each task.labels as label}<span class="label">{label}</span>{/each}
+                {#each task.labels as label}<span class="label">{label.name}</span>{/each}
               </div>
             {/if}
           {/if}

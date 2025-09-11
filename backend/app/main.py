@@ -14,6 +14,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def _normalize_labels(labels):
+    """
+    Accepts:
+      - None
+      - ["bug", "ui"]
+      - [{"name":"bug"}, {"id": 2, "name":"ui"}]
+    Returns a list of dicts: [{"id": 1, "name": "bug"}, ...]
+    (ids are local within the task payload)
+    """
+    if not labels:
+        return []
+    out = []
+    for i, item in enumerate(labels, start=1):
+        if isinstance(item, str):
+            out.append({"id": i, "name": item})
+        elif isinstance(item, dict):
+            name = item.get("name") or ""
+            out.append({"id": i, "name": name})
+        else:
+            out.append({"id": i, "name": str(item)})
+    return out
 
 class ProjectCreate(BaseModel):
     title: str
@@ -32,10 +53,10 @@ class Project(BaseModel):
     website: str | None
     status: Literal["idea", "active", "paused", "done"]
 
-    notes: list[str]
-    open: list[dict]         # or better: list[Task]
-    in_progress: list[dict]  # or better: list[Task]
-    done: list[dict]         # or better: list[Task]
+    notes: list[dict]
+    open: list[dict]
+    in_progress: list[dict]
+    done: list[dict]
 
 
 with open("app/mock_data.json", "r", encoding="utf-8") as f:
@@ -53,9 +74,9 @@ async def getProjects():
 
 @app.get("/getProject/{project_id}", response_model=Project)
 async def getProject(project_id: int):
-    for p in projects:
-        if p.id == project_id:
-            return p
+    for project in projects:
+        if project.id == project_id:
+            return project
     raise HTTPException(status_code=404, detail="Project not found")
 
 @app.post("/addProject/", response_model=Project)
@@ -79,7 +100,55 @@ async def addProject(project_data: ProjectCreate):
     projects.append(new_project)
     return new_project
 
+@app.patch("/projects/{project_id}", response_model=Project)
+async def edit_project(project_id: int, updates: dict):
+    pass
 
-@app.get("/items/{item_id}")
-async def read_item(item_id: int, word: str | None = None):
-    return {"item_id": item_id, "word": word}
+@app.post("/projects/{project_id}/tasks", response_model=Project)
+async def add_task(project_id: int, task: dict):
+    for project in projects:
+        if project.id == project_id:
+            new_id = max(
+                [t["id"] for t in (project.open + project.in_progress + project.done)] or [0]
+            ) + 1
+            task["id"] = new_id
+
+            task["labels"] = _normalize_labels(task.get("labels"))
+
+            project.open.append(task)
+            return project
+
+    raise HTTPException(status_code=404, detail="Project not found")
+
+
+@app.delete("/projects/{project_id}/tasks/{task_id}", response_model=Project)
+async def delete_task(project_id: int, task_id: int):
+    for project in projects:
+        if project.id == project_id:
+            for task_list in [project.open, project.in_progress, project.done]:
+                for task in task_list:
+                    if task["id"] == task_id:
+                        task_list.remove(task)
+                        return project
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    raise HTTPException(status_code=404, detail="Project not found")
+
+@app.patch("/projects/{project_id}/tasks/{task_id}", response_model=Project)
+async def update_task(project_id: int, task_id: int, updates: dict):
+    for project in projects:
+        if project.id == project_id:
+            for task_list in [project.open, project.in_progress, project.done]:
+                for task in task_list:
+                    if task["id"] == task_id:
+                        for key, value in updates.items():
+                            if key == "labels":
+                                task["labels"] = _normalize_labels(value)
+                            elif key in task:
+                                task[key] = value
+                        return project
+
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    raise HTTPException(status_code=404, detail="Project not found")
+
