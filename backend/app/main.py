@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Literal, Optional
+import json
 
 app = FastAPI()
 
@@ -11,83 +14,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Example data with task objects (title, desc, labels)
-projects = [
-    {
-        "id": "1",
-        "title": "ProjectBoard",
-        "short_description": "Personal project hub",
-        "description": "Personal project hub with notes and a kanban board.",
-        "status": "done",
-        "github": "https://github.com/HugoOuwerkerk/ProjectBoard",
-        "website": "http://localhost:5173/",
-        "notes": ["Add Markdown support", "Consider export feature"],
-        "open": [
-            {"title": "Fix filter dropdown", "desc": "Dropdown flickers on blur in Chrome.", "labels": ["bug", "ui"]},
-            {"title": "Add project form", "desc": "Modal with name + short description.", "labels": ["feature"]}
-        ],
-        "in_progress": [
-            {"title": "Responsive layout", "desc": "Tweak grid gaps < 680px.", "labels": ["ui", "polish"]}
-        ],
-        "done": [
-            {"title": "Landing page design", "desc": "Dark hero + showcase board.", "labels": ["design"]}
-        ]
-    },
-    {
-        "id": "2",
-        "title": "Journeo",
-        "short_description": "Trip planner",
-        "description": "Trip planner with budget & preferences.",
-        "status": "paused",
-        "github": "https://github.com/HugoOuwerkerk/journeo",
-        "website": "https://journeo.example.com",
-        "notes": ["Integrate routing API"],
-        "open": [
-            {"title": "Budget slider", "desc": "Range component with currency suffix.", "labels": ["feature", "ui"]},
-            {"title": "Date picker", "desc": "Disable past dates; support ranges.", "labels": ["feature"]}
-        ],
-        "in_progress": [],
-        "done": [
-            {"title": "Frontend skeleton", "desc": "Routes + base layout created.", "labels": ["setup"]}
-        ]
-    },
-    {
-        "id": "3",
-        "title": "AutoShortsBot",
-        "short_description": "Reddit → Shorts bot",
-        "description": "Bot that converts Reddit content into YouTube Shorts.",
-        "status": "active",
-        "github": "https://github.com/HugoOuwerkerk/auto-shorts-bot",
-        "website": None,
-        "notes": ["Check TikTok upload API"],
-        "open": [
-            {"title": "Add watermark", "desc": "Bottom-right, 60% opacity.", "labels": ["feature", "branding"]},
-            {"title": "Custom voice", "desc": "TTS voice with SSML support.", "labels": ["research"]}
-        ],
-        "in_progress": [
-            {"title": "Subtitle rendering", "desc": "SRT -> burned-in subs with outline.", "labels": ["video", "ffmpeg"]}
-        ],
-        "done": []
-    },
-    {
-        "id": "4",
-        "title": "Personal CV Website",
-        "short_description": "Portfolio site",
-        "description": "Portfolio site that showcases all my projects.",
-        "status": "active",
-        "github": "https://github.com/HugoOuwerkerk/personal-site",
-        "website": "https://hugo.dev",
-        "notes": ["Add dark mode toggle"],
-        "open": [],
-        "in_progress": [
-            {"title": "Project grid layout", "desc": "Auto-fit cards with equal heights.", "labels": ["ui"]}
-        ],
-        "done": [
-            {"title": "Hero section", "desc": "Intro copy + CTA.", "labels": ["content"]},
-            {"title": "Contact form", "desc": "Serverless form handler wired.", "labels": ["feature"]}
-        ]
-    }
-]
+
+class ProjectCreate(BaseModel):
+    title: str
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+    github: Optional[str] = None
+    website: Optional[str] = None
+    status: Literal["idea", "active",  "in_progress", "done"]
+
+class Project(BaseModel):
+    id: int
+    title: str
+    short_description: str | None
+    description: str | None
+    github: str | None
+    website: str | None
+    status: Literal["idea", "active", "paused", "done"]
+
+    notes: list[str]
+    open: list[dict]         # or better: list[Task]
+    in_progress: list[dict]  # or better: list[Task]
+    done: list[dict]         # or better: list[Task]
+
+
+with open("app/mock_data.json", "r", encoding="utf-8") as f:
+    raw_projects = json.load(f)
+
+projects = [Project(**p) for p in raw_projects]
 
 @app.get("/")
 async def read_root():
@@ -97,16 +51,33 @@ async def read_root():
 async def getProjects():
     return projects
 
-@app.get("/getProject/{project_id}")
-async def getProject(project_id: str):
+@app.get("/getProject/{project_id}", response_model=Project)
+async def getProject(project_id: int):
     for p in projects:
-        if p["id"] == project_id:
+        if p.id == project_id:
             return p
     raise HTTPException(status_code=404, detail="Project not found")
 
-@app.post("/addProject")
-async def addProject():
-    pass
+@app.post("/addProject/", response_model=Project)
+async def addProject(project_data: ProjectCreate):
+    new_id = len(projects) + 1
+
+    new_project = Project(
+        id=new_id,
+        title=project_data.title,
+        short_description=project_data.short_description,
+        description=project_data.description,
+        github=project_data.github,
+        website=project_data.website,
+        status=project_data.status,
+        notes=[],
+        open=[],
+        in_progress=[],
+        done=[],
+    )
+
+    projects.append(new_project)
+    return new_project
 
 
 @app.get("/items/{item_id}")

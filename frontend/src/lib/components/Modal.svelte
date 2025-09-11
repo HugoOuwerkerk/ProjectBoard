@@ -1,39 +1,35 @@
 <script lang="ts">
   export let open = false;
-  export let title = "Modal";
-  export let width = 'min(900px, 96vw)';   // single, simple width
   export let closeOnBackdrop = true;
 
   let dialog: HTMLDialogElement;
 
-  // Simple reactive open/close
   $: if (dialog) {
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }
 
-  function handleClose() {
+  function closeModal() {
     open = false;
   }
 
-  function onDialogClick(e: MouseEvent) {
-    if (closeOnBackdrop && e.target === dialog) handleClose();
+  function clickDiolag(e: MouseEvent) {
+    if (closeOnBackdrop && e.target === dialog) closeModal();
   }
 </script>
 
 <dialog
   bind:this={dialog}
   class="modal"
-  on:close={handleClose}
-  on:click={onDialogClick}
+  on:close={closeModal}
+  on:click={clickDiolag}
   aria-modal="true"
-  aria-label={title}
-  style={`--modal-width:${width};`}
+  style={`--modal-width:min(900px, 96vw)};`}
 >
   <div class="panel">
     <header class="modal-header">
-      <h2 class="modal-title">{title}</h2>
-      <button type="button" class="icon-btn" aria-label="Close" on:click={handleClose}>✕</button>
+      <h2 class="modal-title">Add a new project</h2>
+      <button type="button" class="icon-btn" aria-label="Close" on:click={closeModal}>✕</button>
     </header>
 
     <main class="modal-body">

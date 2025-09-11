@@ -1,9 +1,25 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Modal from "$lib/components/Modal.svelte";
+  
+  let search = $state("");
+  let statusFilter = $state("all");
+  let allProjects = $state<any[]>([])
+  let showModal = $state(false);
 
-  let projects: any[] = [];
-  let showModal = false;
+  let filteredProjects = $derived.by(() => {
+    const term = (search ?? "").toLowerCase();
+
+    return allProjects.filter(p => {
+      const matchesTitle =
+        !term || (p.title ?? "").toLowerCase().includes(term);
+
+      const matchesStatus =
+        statusFilter === "all" || p.status === statusFilter;
+
+      return matchesTitle && matchesStatus;
+    });
+  });
 
   async function getProjects() {
     const res = await fetch("http://127.0.0.1:8000/getProjects");
@@ -14,14 +30,36 @@
     showModal = true;
   }
 
-  function addProject(e: SubmitEvent) {
-    const formData = new FormData(e.target as HTMLFormElement);
-    // formdata.get()
+  async function addProject(e: SubmitEvent) {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+
+    const payload = {
+      title: formData.get("title"),
+      short_description: formData.get("short_description"),
+      description: formData.get("description"),
+      github: formData.get("github"),
+      website: formData.get("website"),
+      status: formData.get("status")
+    };
+
+    const res = await fetch("http://127.0.0.1:8000/addProject/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    allProjects = [...allProjects, data];
+
     showModal = false;
   }
 
   onMount(async () => {
-    projects = await getProjects();
+    allProjects = await getProjects();
   });
 </script>
 
@@ -36,7 +74,6 @@
     <div class="projects-header">
       <h2>My Projects</h2>
 
-      <!-- UI-ONLY controls (geen scripts, jij koppelt later) -->
       <form class="controls" aria-label="project controls">
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"
@@ -44,26 +81,27 @@
               d="M21 21l-4.35-4.35m1.18-4.83a6 6 0 11-12 0 6 6 0 0112 0z"
             /></svg
           >
-          <input type="search" placeholder="Zoek project..." />
+          <input type="search" placeholder="Zoek project..." bind:value={search}/>
         </label>
-        <select class="filter" aria-label="filter">
-          <option value="all">ALL</option>
-          <option value="active">Active</option>
-          <option value="paused">Paused</option>
-          <option value="done">Done</option>
-        </select>
+          <select class="filter" aria-label="filter" bind:value={statusFilter}>
+            <option value="all">ALL</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+            <option value="done">Done</option>
+            <option value="idea">Idea</option>
+          </select>
         <button
           type="button"
           class="btn primary"
           aria-haspopup="dialog"
-          on:click={() => (showModal = true)}>+ New Project</button
+          onclick={() => (showModal = true)}>+ New Project</button
         >
       </form>
     </div>
 
     <!-- GRID -->
     <div class="projects">
-      {#each projects as project}
+      {#each filteredProjects as project}
         <article class="project-card">
           <header>
             <h3>{project.title}</h3>
@@ -88,9 +126,8 @@
       <button
         type="button"
         class="project-card add-card"
-        on:click={() => (showModal = true)}
+        onclick={() => (showModal = true)}
         aria-haspopup="dialog"
-        aria-label="Add a new project"
       >
         <div class="add-inner">
           <span class="plus">+</span>
@@ -100,10 +137,10 @@
     </div>
   </section>
 
-  <Modal bind:open={showModal} title="Add new project" width="min(900px, 96vw)">
+  <Modal bind:open={showModal}>
     <form
       class="modal-form"
-      on:submit|preventDefault={addProject}
+      onsubmit={addProject}
       aria-label="New project form"
     >
       <!-- Title -->
@@ -118,9 +155,6 @@
           maxlength="80"
           autofocus
         />
-        <small class="hint"
-          >Short, clear project title (max 80 characters).</small
-        >
       </label>
 
       <!-- Short description -->
@@ -185,7 +219,7 @@
         <button
           type="button"
           class="btn ghost"
-          on:click={() => (showModal = false)}>Cancel</button
+          onclick={() => (showModal = false)}>Cancel</button
         >
         <button type="submit" class="btn primary">Save</button>
       </div>
@@ -399,8 +433,8 @@
     text-transform: capitalize;
   }
   .badge.idea {
-    color: #c7f9cc;
-    border-color: rgba(120, 220, 160, 0.35);
+    color: #f5d97c;
+    border-color: rgba(245, 217, 124, 0.35);
   }
   .badge.active {
     color: #9be7bb;
@@ -524,10 +558,6 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px;
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--muted);
   }
 
   .actions {

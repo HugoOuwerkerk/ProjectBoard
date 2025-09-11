@@ -34,8 +34,12 @@
       <p>{project.description}</p>
 
       <div class="links">
+        {#if project.github}
         <a class="btn" href="{project.github}" target="_blank">GitHub →</a>
+        {/if}
+        {#if project.website}
         <a class="btn" href="{project.website}" target="_blank">Website →</a>
+        {/if}
       </div>
     </div>
 
