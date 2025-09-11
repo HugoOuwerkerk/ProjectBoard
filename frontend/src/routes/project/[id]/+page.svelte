@@ -25,6 +25,12 @@
 
 {#if project}
 <main class="project-page">
+  <nav class="page-actions">
+    <a href="/" class="btn back-btn" aria-label="Go back" data-action="back">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="icon"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      Back
+    </a>
+  </nav>
   <header class="header">
     <h1>{project.title}</h1>
     <p>{project.short_description}</p>
@@ -54,11 +60,23 @@
         {/each}
       </ul>        
     </aside>
+
+    <div class="details-actions">
+      <button class="btn small_edit" data-action="edit-details">Edit</button>
+    </div>
   </section>
 
 <section class="board">
   <div class="col">
-    <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
+    <div class="col-header">
+      <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
+      <button class="btn small" aria-label="Add open task" data-action="add-task" data-status="open">
+        <svg viewBox="0 0 24 24" class="icon">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/>
+        </svg>
+        Add task
+      </button>
+    </div>
 
     {#if project.open && project.open.length}
       {#each project.open as task}
@@ -188,7 +206,7 @@
     --link: #9be7bb;
     --link-hover: #b7f0cc;
   }
-
+  
   .project-page {
     min-height: 100vh;
     background: var(--bg);
@@ -197,6 +215,19 @@
     display: grid;
     gap: 24px;
     place-items: center;
+  }
+
+    /* Back button */
+  .page-actions {
+    width: min(1000px, 95vw);
+    display: flex;
+    justify-content: flex-start;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
   }
 
   /* HEADER */
@@ -224,6 +255,13 @@
     border-radius: 16px;
     padding: 20px;
     box-shadow: var(--shadow-1);
+    position: relative;
+  }
+
+  .details-actions {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
   }
   .info h2, .notes h2 {
     font-size: 18px;
@@ -243,6 +281,14 @@
     text-decoration: none;
     transition: background 0.15s ease, border-color 0.15s ease;
   }
+  .btn.small_edit {
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .icon { width: 16px; height: 16px; display: inline-block; }
+
   .btn:hover { background: var(--btn-hover); }
   .notes ul {
     list-style: disc;
@@ -264,6 +310,32 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
   }
+  .col-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px; /* keeps spacing before tasks */
+  }
+
+  .col-header h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .btn.small {
+    padding: 4px 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .btn.small .icon {
+    width: 14px;
+    height: 14px;
+  }
+
   .col {
     background: var(--col-left);
     border-radius: 14px;
