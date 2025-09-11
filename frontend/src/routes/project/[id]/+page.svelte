@@ -2,14 +2,12 @@
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
 
-  let project: any = null;
-  let error: any = null;
-  $: projectId = $page.params.id;
+  let project = $state<any>(null);
+  let projectId = $derived($page.params.id);
 
   async function getProject() {
     const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
     if (!res.ok) {
-      error = "Project not found";
     return null;
     }
     return await res.json();
@@ -19,10 +17,15 @@
     project = await getProject();
   });
 </script>
+
+<svelte:head>
+  <title>{project ? `${project.title} – ProjectBoard` : 'ProjectBoard'}</title>
+</svelte:head>
+
+
 {#if project}
 <main class="project-page">
-  <!-- HERO -->
-  <header class="hero">
+  <header class="header">
     <h1>{project.title}</h1>
     <p>{project.short_description}</p>
   </header>
@@ -196,15 +199,15 @@
     place-items: center;
   }
 
-  /* HERO */
-  .hero { text-align: center; }
-  .hero h1 {
+  /* HEADER */
+  .header { text-align: center; }
+  .header h1 {
     font-size: clamp(36px, 6vw, 56px);
     font-weight: 800;
     letter-spacing: -0.02em;
     margin: 0;
   }
-  .hero p {
+  .header p {
     margin: 8px 0 0;
     font-size: clamp(15px, 2vw, 20px);
     color: var(--muted);
@@ -305,9 +308,6 @@
   .task-desc  { margin: 0; font-size: 13px; color: var(--muted); }
   .labels { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .label  { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--muted); }
-
-  .line { height: 10px; border-radius: 6px; background: rgba(255,255,255,0.14); margin-top: 8px; }
-  .line.short { width: 60%; }
 
   .empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 

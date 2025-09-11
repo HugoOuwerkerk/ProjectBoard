@@ -146,6 +146,7 @@
       <!-- Title -->
       <label class="field">
         <span class="label">Title <sup>*</sup></span>
+        <!-- svelte-ignore a11y_autofocus -->
         <input
           class="input"
           type="text"
