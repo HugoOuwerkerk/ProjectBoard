@@ -42,7 +42,7 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     github: Optional[str] = None
     website: Optional[str] = None
-    status: Literal["idea", "active",  "in_progress", "done"]
+    status: Literal["idea", "active",  "paused", "done"]
 
 class Project(BaseModel):
     id: int
@@ -102,7 +102,15 @@ async def addProject(project_data: ProjectCreate):
 
 @app.patch("/projects/{project_id}", response_model=Project)
 async def edit_project(project_id: int, updates: dict):
-    pass
+    for project in projects:
+        if project.id == project_id:
+            for field, value in updates.items():
+                setattr(project, field, value)
+            return project
+
+    raise HTTPException(status_code=404, detail="Project not found")
+
+
 
 @app.post("/projects/{project_id}/tasks", response_model=Project)
 async def add_task(project_id: int, task: dict):

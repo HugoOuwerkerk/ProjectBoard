@@ -1,5 +1,5 @@
+- make notes work
 - able to move the task to open, in progress, done
-- make edit button work
 - add somthing to delete a task(drag to bottum somethign shows up there whyen you pick the task up)
 - add database and docker 
 - add to my server

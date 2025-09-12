@@ -1,6 +1,7 @@
 <script lang="ts">
   export let open = false;
   export let closeOnBackdrop = true;
+  export let title: string = "Dialog";
 
   let dialog: HTMLDialogElement;
 
@@ -28,7 +29,7 @@
 >
   <div class="panel">
     <header class="modal-header">
-      <h2 class="modal-title">Add a new project</h2>
+      <h2 class="modal-title">{title}</h2>
       <button type="button" class="icon-btn" aria-label="Close" on:click={closeModal}>✕</button>
     </header>
 
