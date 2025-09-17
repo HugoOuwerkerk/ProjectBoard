@@ -2,7 +2,6 @@
   import { page } from '$app/stores';
   import Modal from '$lib/components/Modal.svelte';
   import { onMount } from 'svelte';
-  import { dndzone } from "svelte-dnd-action";
 
   let project = $state<any>(null);
   let projectId = $derived($page.params.id);
@@ -12,9 +11,6 @@
 
   async function getProject() {
     const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
-    if (!res.ok) {
-    return null;
-    }
     return await res.json();
   }
 
@@ -23,10 +19,21 @@
     const form = e.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
 
+    //needs change(easyer way, changes in api mayby or in the ui)
+    let rawLabels = formData.get("labels");
+    let labels: string[] = []; 
+    if (rawLabels) {
+      labels = rawLabels
+        .toString()
+        .split(",")
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+    }
+
     const payload = {
       title: formData.get("title"),
       desc: formData.get("description"),
-      labels: ((formData.get("labels") as string | null)?.split(",").map(l => l.trim()).filter(Boolean)) ?? []
+      labels: labels
     };
 
     const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks`, {
@@ -41,13 +48,14 @@
     showAddTask = false;
   }
 
+  // not added yet
   async function deleteTask(taskId: number) {
     await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`, {
       method: "DELETE"
     });
     project = await getProject();
   }
-
+  // not added yet
   async function updateTaskStatus(taskId: number, newStatus: string) {
     await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`, {
       method: "PATCH",
@@ -134,87 +142,88 @@
     </div>
   </section>
 
-<section class="board">
-  <!-- ========== OPEN ========== -->
-  <div class="col">
-    <div class="col-header">
-      <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
-      <button class="btn small" onclick={() => (showAddTask = true)}>
-        <svg viewBox="0 0 24 24" class="icon"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-        Add task
-      </button>
+  <!-- board section -->
+  <section class="board">
+    <!-- open line -->
+    <div class="col">
+      <div class="col-header">
+        <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
+        <button class="btn small" onclick={() => (showAddTask = true)}>
+          <svg viewBox="0 0 24 24" class="icon"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          Add task
+        </button>
+      </div>
+
+      {#if project.open && project.open.length}
+        {#each project.open as task (task.id || task.title)}
+          <div class="card">
+            <span class="chip"></span>
+            <h3 class="task-title">{task.title}</h3>
+            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
+            {#if task.labels?.length}
+              <div class="labels">
+                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        <div class="empty">No open tasks</div>
+      {/if}
     </div>
 
-    {#if project.open && project.open.length}
-      {#each project.open as task (task.id || task.title)}
-        <div class="card">
-          <span class="chip"></span>
-          <h3 class="task-title">{task.title}</h3>
-          {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-          {#if task.labels?.length}
-            <div class="labels">
-              {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {:else}
-      <div class="empty">No open tasks</div>
-    {/if}
-  </div>
+    <!-- in progress line -->
+    <div class="col col-mid">
+      <div class="col-header">
+        <h2>In Progress <span class="count">({project.in_progress?.length || 0})</span></h2>
+      </div>
 
-  <!-- ========== IN PROGRESS ========== -->
-  <div class="col col-mid">
-    <div class="col-header">
-      <h2>In Progress <span class="count">({project.in_progress?.length || 0})</span></h2>
+      {#if project.in_progress && project.in_progress.length}
+        {#each project.in_progress as task (task.id || task.title)}
+          <div class="card">
+            <span class="chip"></span>
+            <h3 class="task-title">{task.title}</h3>
+            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
+            {#if task.labels?.length}
+              <div class="labels">
+                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        <div class="empty">No tasks in progress</div>
+      {/if}
     </div>
 
-    {#if project.in_progress && project.in_progress.length}
-      {#each project.in_progress as task (task.id || task.title)}
-        <div class="card">
-          <span class="chip"></span>
-          <h3 class="task-title">{task.title}</h3>
-          {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-          {#if task.labels?.length}
-            <div class="labels">
-              {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {:else}
-      <div class="empty">No tasks in progress</div>
-    {/if}
-  </div>
+    <!-- done line -->
+    <div class="col col-done">
+      <div class="col-header">
+        <h2>Done <span class="count">({project.done?.length || 0})</span></h2>
+      </div>
 
-  <!-- ========== DONE ========== -->
-  <div class="col col-done">
-    <div class="col-header">
-      <h2>Done <span class="count">({project.done?.length || 0})</span></h2>
+      {#if project.done && project.done.length}
+        {#each project.done as task (task.id || task.title)}
+          <div class="card">
+            <span class="chip"></span>
+            <h3 class="task-title">{task.title}</h3>
+            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
+            {#if task.labels?.length}
+              <div class="labels">
+                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        <div class="empty">Everything is done 🎉</div>
+      {/if}
     </div>
-
-    {#if project.done && project.done.length}
-      {#each project.done as task (task.id || task.title)}
-        <div class="card">
-          <span class="chip"></span>
-          <h3 class="task-title">{task.title}</h3>
-          {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-          {#if task.labels?.length}
-            <div class="labels">
-              {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {:else}
-      <div class="empty">Everything is done 🎉</div>
-    {/if}
-  </div>
-</section>
+  </section>
 
 
 
-  <!-- =================== ADD TASK MODAL =================== -->
+ <!-- add task modal -->
   <Modal bind:open={showAddTask} title="Add task">
     <form class="modal-form" onsubmit={addTask}>
       <label class="field">
@@ -239,7 +248,7 @@
     </form>
   </Modal>
 
-  <!-- =================== EDIT PROJECT MODAL =================== -->
+   <!-- edit project modal -->
   <Modal bind:open={showEditProject} title="Add a new project">
     <form class="modal-form" onsubmit={editProject} aria-label="New project form">
       <label class="field">

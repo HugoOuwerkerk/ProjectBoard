@@ -36,7 +36,7 @@ Manage your projects, notes, and tasks in a clean **kanban-style board** with a 
     poetry install
 
 **Run:**
-    poetry run uvicorn main:app --reload --port 8000
+    poetry run uvicorn app.main:app --reload --port 8000
 
 CORS is enabled for:
 - http://localhost:5173

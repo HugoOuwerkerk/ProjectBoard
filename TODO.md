@@ -1,5 +1,7 @@
 - make notes work
+- in the project route right now 3x the same code for open/in progress/ done change it to 1x
 - able to move the task to open, in progress, done
 - add somthing to delete a task(drag to bottum somethign shows up there whyen you pick the task up)
-- add database and docker 
-- add to my server
+- database split up in different files
+- add docker
+- add error for backend and frontend

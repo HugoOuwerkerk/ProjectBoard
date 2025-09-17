@@ -5,17 +5,16 @@
   let search = $state("");
   let statusFilter = $state("all");
   let allProjects = $state<any[]>([])
-  let showModal = $state(false);
+  let showAddProject = $state(false);
 
   let filteredProjects = $derived.by(() => {
-    const term = (search ?? "").toLowerCase();
+    const searchTerm = (search ?? "").toLowerCase();
 
-    return allProjects.filter(p => {
-      const matchesTitle =
-        !term || (p.title ?? "").toLowerCase().includes(term);
+    return allProjects.filter(project => {
+      const matchesTitle = !searchTerm || project.title.toLowerCase().includes(searchTerm)
+;
 
-      const matchesStatus =
-        statusFilter === "all" || p.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || project.status === statusFilter;
 
       return matchesTitle && matchesStatus;
     });
@@ -26,13 +25,9 @@
     return await res.json();
   }
 
-  function openModal() {
-    showModal = true;
-  }
-
-  async function addProject(e: SubmitEvent) {
-    e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
+  async function addProject(event: SubmitEvent) {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
 
     const payload = {
@@ -53,9 +48,9 @@
     });
 
     const data = await res.json();
-    allProjects = [...allProjects, data];
+    allProjects.push(data);
 
-    showModal = false;
+    showAddProject = false;
   }
 
   onMount(async () => {
@@ -69,7 +64,7 @@
     <p>Organiseer je projecten, notities en taken op één plek.</p>
   </header>
 
-  <!-- PROJECTS SECTION -->
+  <!-- projects section -->
   <section class="projects-wrap">
     <div class="projects-header">
       <h2>My Projects</h2>
@@ -94,13 +89,13 @@
           type="button"
           class="btn primary"
           aria-haspopup="dialog"
-          onclick={() => (showModal = true)}>+ New Project</button
+          onclick={() => (showAddProject = true)}>+ New Project</button
           
         >
       </form>
     </div>
 
-    <!-- GRID -->
+    <!-- grid -->
     <div class="projects">
       {#each filteredProjects as project}
         <article class="project-card">
@@ -127,7 +122,7 @@
       <button
         type="button"
         class="project-card add-card"
-        onclick={() => (showModal = true)}
+        onclick={() => (showAddProject = true)}
         aria-haspopup="dialog"
       >
         <div class="add-inner">
@@ -138,13 +133,13 @@
     </div>
   </section>
 
-  <Modal bind:open={showModal} title="Add a new project">
+  <!-- add project modal -->
+  <Modal bind:open={showAddProject} title="Add a new project">
     <form
       class="modal-form"
       onsubmit={addProject}
       aria-label="New project form"
     >
-      <!-- Title -->
       <label class="field">
         <span class="label">Title <sup>*</sup></span>
         <!-- svelte-ignore a11y_autofocus -->
@@ -159,7 +154,6 @@
         />
       </label>
 
-      <!-- Short description -->
       <label class="field">
         <span class="label">Short description</span>
         <input
@@ -171,7 +165,6 @@
         />
       </label>
 
-      <!-- Description -->
       <label class="field">
         <span class="label">Description</span>
         <textarea
@@ -182,7 +175,6 @@
         ></textarea>
       </label>
 
-      <!-- Links -->
       <div class="grid-2">
         <label class="field">
           <span class="label">GitHub (optional)</span>
@@ -205,7 +197,6 @@
         </label>
       </div>
 
-      <!-- Status -->
       <label class="field">
         <span class="label">Status</span>
         <select class="select" name="status">
@@ -216,12 +207,11 @@
         </select>
       </label>
 
-      <!-- Footer actions go in the modal's footer slot so they right-align perfectly -->
       <div class="actions">
         <button
           type="button"
           class="btn ghost"
-          onclick={() => (showModal = false)}>Cancel</button
+          onclick={() => (showAddProject = false)}>Cancel</button
         >
         <button type="submit" class="btn primary">Save</button>
       </div>
