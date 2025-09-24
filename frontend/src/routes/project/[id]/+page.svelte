@@ -172,6 +172,7 @@
                   {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
                 </div>
               {/if}
+              <button class="btn delete-task" title="Delete task" onclick={() => (deleteTask(task.id))}>🗑️</button>
             </div>
           {/each}
         {:else}

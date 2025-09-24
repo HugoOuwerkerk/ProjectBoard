@@ -356,7 +356,6 @@ body {
 .col-mid .chip  { background: var(--chip-mid); }
 .col-done .chip { background: var(--chip-done); }
 
-/* Task chips ONLY here (no clash with form label) */
 .labels { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .label  { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--muted); }
 
@@ -364,20 +363,22 @@ body {
 .task-desc  { margin: 0; font-size: 13px; color: var(--muted); }
 .empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 
-.trash-zone {
-  margin-top: 2rem;
-  padding: 1rem;
-  border: 2px dashed #ff4d4f;
-  border-radius: 12px;
-  text-align: center;
+.btn.delete-task {
+  background: transparent;
   color: #ff4d4f;
-  font-weight: bold;
-  transition: background 0.2s;
-}
-.trash-zone.dnd-over {
-  background: rgba(255, 77, 79, 0.1);
+  border: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  margin-left: 6px;
 }
 
+.btn.delete-task:hover {
+  background: rgba(255,77,79,0.12);
+  color: #fff;
+}
 
 /* Project detail responsive */
 @media (max-width: 900px) {
