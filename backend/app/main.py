@@ -352,10 +352,10 @@ async def add_note(project_id: int, note: dict):
 async def edit_note(project_id: int, note_id: int, updates: dict):
     con = get_conn()
     cur = con.cursor()
-    cur.execute("UPDATE note SET desc = ? WHERE id = ? AND project_id = ?", (updates.get("desc"), note_id, project_id))
+    cur.execute("UPDATE note SET body = ? WHERE id = ? AND project_id = ?", (updates.get("desc"), note_id, project_id))
     con.commit()
     con.close()
-    return {"id": note_id, "desc": updates.get("desc")}
+    return await get_project(project_id)
 
 
 @app.delete("/projects/{project_id}/notes/{note_id}")

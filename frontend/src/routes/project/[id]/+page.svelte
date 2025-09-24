@@ -15,6 +15,7 @@
   let showAddTask = $state(false);
   let showEditProject = $state(false);
   let showAddNote = $state(false);
+  let showEditNote = $state(false);
 
   async function getProject() {
     const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
@@ -121,8 +122,24 @@
     await getProject();
   }
 
-  async function editNote(noteId: number, newText: string) {
-    // You can implement the API call yourself
+  async function editNote(e: SubmitEvent, noteId: number) {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+
+    const payload = {
+      desc: formData.get("note"),
+
+    };
+
+    const res = await fetch(`http://127.0.0.1:8000/projects/${project_id}/notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    await getProject();
+    showEditNote = false;
   }
 
   onMount(async () => {
