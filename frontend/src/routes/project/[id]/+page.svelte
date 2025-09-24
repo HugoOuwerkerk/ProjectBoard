@@ -14,10 +14,11 @@
 
   let showAddTask = $state(false);
   let showEditProject = $state(false);
+  let showAddNote = $state(false);
 
   async function getProject() {
     const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
-    return await res.json();
+    project = await res.json();
   }
 
   async function addTask(e: SubmitEvent) {
@@ -54,12 +55,11 @@
     showAddTask = false;
   }
 
-  // not added yet
   async function deleteTask(taskId: number) {
     await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`, {
       method: "DELETE"
     });
-    project = await getProject();
+    await getProject();
   }
   // not added yet
   async function updateTaskStatus(taskId: number, newStatus: string) {
@@ -68,7 +68,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus })
     });
-    project = await getProject();
+    await getProject();
   }
 
   async function editProject(e: SubmitEvent) {
@@ -95,8 +95,38 @@
     showEditProject = false;
   }
 
+  async function addNote(e: SubmitEvent) {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+
+    const payload = {
+      desc: formData.get("note")
+    };
+
+    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    await getProject();
+    showAddNote = false;
+
+  }
+
+  async function deleteNote(noteId: number) {
+    await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`, {
+      method: "DELETE"
+    });
+    await getProject();
+  }
+
+  async function editNote(noteId: number, newText: string) {
+    // You can implement the API call yourself
+  }
+
   onMount(async () => {
-    project = await getProject();
+    await getProject();
   });
 </script>
 
@@ -137,10 +167,15 @@
     <aside class="notes">
       <h2>Notes</h2>
       <ul>
-        {#each project.notes as note}
-        <li>{note.desc}</li>
+        {#each project.notes as note, id}
+          <li>
+            {note.desc}
+            <button class="btn small" title="Edit note" onclick={() => {/* implement edit logic */}}>Edit</button>
+            <button class="btn small" title="delete note" onclick={() => {deleteNote(note.id)}}>delete</button>
+          </li>
         {/each}
-      </ul>        
+      </ul>
+      <button class="btn small" onclick={() => (showAddNote = true)}>Add note</button>
     </aside>
 
     <div class="details-actions">
@@ -252,6 +287,20 @@
       <div class="actions">
         <button type="button" class="btn ghost" onclick={() => (showEditProject = false)}>Cancel</button>
         <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </Modal>
+
+  <!-- add note modal -->
+  <Modal bind:open={showAddNote} title="Add note">
+    <form class="modal-form" onsubmit={addNote}>
+      <label class="field">
+        <span class="label">Note</span>
+        <textarea class="textarea" name="note" rows="4" required></textarea>
+      </label>
+      <div class="actions">
+        <button type="button" class="btn ghost" onclick={() => { showAddNote = false}}>Cancel</button>
+        <button type="submit" class="btn primary">Add</button>
       </div>
     </form>
   </Modal>

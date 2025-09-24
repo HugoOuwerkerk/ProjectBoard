@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 import sqlite3
 import json
-import os
 
 
 # DB
@@ -13,6 +12,7 @@ def get_conn():
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON;")
     return con
+
 
 def init_db():
     con = get_conn()
@@ -79,7 +79,7 @@ def build_project_dict(project_row: sqlite3.Row) -> dict:
         (project["id"],)
     )
     project["notes"] = [
-        {"id": row["id"], "desc": r["body"]}
+        {"id": row["id"], "desc": row["body"]}
         for row in cur.fetchall()
     ]
 
@@ -322,5 +322,47 @@ async def update_task(project_id: int, task_id: int, updates: dict):
         cur.execute(sql, tuple(params))
         con.commit()
 
+    con.close()
+    return await get_project(project_id)
+
+
+# -------- Notes --------
+@app.get("/projects/{project_id}/notes", response_model=list[dict])
+async def get_notes(project_id: int):
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute("SELECT id, desc FROM note WHERE project_id = ?", (project_id,))
+    notes = [{"id": row[0], "desc": row[1]} for row in cur.fetchall()]
+    con.close()
+    return notes
+
+
+@app.post("/projects/{project_id}/notes", response_model=dict)
+async def add_note(project_id: int, note: dict):
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute("INSERT INTO note (project_id, body) VALUES (?, ?)", (project_id, note.get("desc")))
+    con.commit()
+    # note_id = cur.lastrowid
+    con.close()
+    return await get_project(project_id)
+
+
+@app.patch("/projects/{project_id}/notes/{note_id}", response_model=dict)
+async def edit_note(project_id: int, note_id: int, updates: dict):
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute("UPDATE note SET desc = ? WHERE id = ? AND project_id = ?", (updates.get("desc"), note_id, project_id))
+    con.commit()
+    con.close()
+    return {"id": note_id, "desc": updates.get("desc")}
+
+
+@app.delete("/projects/{project_id}/notes/{note_id}")
+async def delete_note(project_id: int, note_id: int):
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute("DELETE FROM note WHERE id = ? AND project_id = ?", (note_id, project_id))
+    con.commit()
     con.close()
     return await get_project(project_id)
