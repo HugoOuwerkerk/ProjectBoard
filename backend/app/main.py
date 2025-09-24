@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal
 import sqlite3
 import json
 
@@ -50,10 +50,12 @@ def init_db():
     con.commit()
     con.close()
 
-def row_to_dict(row: sqlite3.Row) -> dict:
+
+def row_to_dict(row: sqlite3.Row | None) -> dict:
     return dict(row) if row is not None else {}
 
-def build_project_dict(project_row: sqlite3.Row) -> dict:
+
+def build_project_dict(project_row: sqlite3.Row | None) -> dict:
     if project_row is None:
         return {}
 
@@ -90,7 +92,7 @@ def build_project_dict(project_row: sqlite3.Row) -> dict:
     for row in cur.fetchall():
         try:
             labels = json.loads(row["labels_json"]) if row["labels_json"] else []
-        except Exception:
+        except (TypeError, json.JSONDecodeError):
             labels = []
         task = {
             "id": row["id"],
@@ -104,14 +106,16 @@ def build_project_dict(project_row: sqlite3.Row) -> dict:
     con.close()
     return project
 
+
 # models
 class ProjectCreate(BaseModel):
     title: str
-    short_description: Optional[str] = None
-    description: Optional[str] = None
-    github: Optional[str] = None
-    website: Optional[str] = None
+    short_description: str | None = None
+    description: str | None = None
+    github: str | None = None
+    website: str | None = None
     status: Literal["idea", "active", "paused", "done"]
+
 
 class ProjectModel(BaseModel):
     id: int
@@ -154,8 +158,8 @@ async def get_projects():
     rows = cur.fetchall()
     con.close()
 
-    projects = [build_project_dict(row) for row in rows]
-    return projects
+    return [build_project_dict(row) for row in rows]
+
 
 @app.get("/getProject/{project_id}", response_model=ProjectModel)
 async def get_project(project_id: int):
@@ -168,6 +172,7 @@ async def get_project(project_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
     return build_project_dict(row)
+
 
 @app.post("/addProject/", response_model=ProjectModel)
 async def add_project(project_data: ProjectCreate):
@@ -191,7 +196,10 @@ async def add_project(project_data: ProjectCreate):
     con.commit()
     con.close()
 
+    if new_id is None:
+        raise HTTPException(status_code=500, detail="Failed to create project")
     return await get_project(new_id)
+
 
 @app.patch("/projects/{project_id}", response_model=ProjectModel)
 async def edit_project(project_id: int, updates: dict):
@@ -231,18 +239,22 @@ async def add_task(project_id: int, task: dict):
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
 
-    title = task.get("title").strip()
+    title = task.get("title")
+    if not title:
+        con.close()
+        raise HTTPException(status_code=400, detail="Task title cannot be empty")
+    title = title.strip()
 
     desc = task.get("desc")
     status = task.get("status") or "open"
-    if status not in ("open", "in_progress", "done"):
+    if status not in {"open", "in_progress", "done"}:
         con.close()
         raise HTTPException(status_code=400, detail="Invalid task status")
 
     labels = task.get("labels") or []
     try:
         labels_json = json.dumps(labels, ensure_ascii=False)
-    except Exception:
+    except (TypeError, json.JSONDecodeError):
         labels_json = "[]"
 
     cur.execute(
@@ -256,6 +268,7 @@ async def add_task(project_id: int, task: dict):
     con.close()
 
     return await get_project(project_id)
+
 
 @app.delete("/projects/{project_id}/tasks/{task_id}", response_model=ProjectModel)
 async def delete_task(project_id: int, task_id: int):
@@ -276,6 +289,7 @@ async def delete_task(project_id: int, task_id: int):
     con.close()
     return await get_project(project_id)
 
+
 @app.patch("/projects/{project_id}/tasks/{task_id}", response_model=ProjectModel)
 async def update_task(project_id: int, task_id: int, updates: dict):
     con = get_conn()
@@ -295,13 +309,13 @@ async def update_task(project_id: int, task_id: int, updates: dict):
             continue
         if key == "labels":
             try:
-                value = json.dumps(value or [], ensure_ascii=False)
-            except Exception:
-                value = "[]"
+                labels_json_value = json.dumps(value or [], ensure_ascii=False)
+            except (TypeError, json.JSONDecodeError):
+                labels_json_value = "[]"
             sets.append("labels_json = ?")
-            params.append(value)
+            params.append(labels_json_value)
         elif key == "status":
-            if value not in ("open", "in_progress", "done"):
+            if value not in {"open", "in_progress", "done"}:
                 con.close()
                 raise HTTPException(status_code=400, detail="Invalid task status")
             sets.append("status = ?")

@@ -132,7 +132,7 @@
 
     };
 
-    const res = await fetch(`http://127.0.0.1:8000/projects/${project_id}/notes/${noteId}`, {
+    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
