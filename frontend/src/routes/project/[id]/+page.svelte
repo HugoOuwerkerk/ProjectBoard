@@ -15,7 +15,6 @@
   let showAddTask = $state(false);
   let showEditProject = $state(false);
   let showAddNote = $state(false);
-  let showEditNote = $state(false);
 
   async function getProject() {
     const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
@@ -122,26 +121,6 @@
     await getProject();
   }
 
-  async function editNote(e: SubmitEvent, noteId: number) {
-    e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
-    const formData = new FormData(form);
-
-    const payload = {
-      desc: formData.get("note"),
-
-    };
-
-    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    await getProject();
-    showEditNote = false;
-  }
-
   onMount(async () => {
     await getProject();
   });
@@ -187,7 +166,6 @@
         {#each project.notes as note, id}
           <li>
             {note.desc}
-            <button class="btn small" title="Edit note" onclick={() => {/* implement edit logic */}}>Edit</button>
             <button class="btn small" title="delete note" onclick={() => {deleteNote(note.id)}}>delete</button>
           </li>
         {/each}
