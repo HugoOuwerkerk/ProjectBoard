@@ -3,6 +3,12 @@
   import Modal from '$lib/components/Modal.svelte';
   import { onMount } from 'svelte';
 
+  const columns = [
+    { key: 'open', label: 'Open', empty: 'No open tasks', class: '' },
+    { key: 'in_progress', label: 'In Progress', empty: 'No tasks in progress', class: 'col-mid' },
+    { key: 'done', label: 'Done', empty: 'Everything is done 🎉', class: 'col-done' }
+  ];
+
   let project = $state<any>(null);
   let projectId = $derived($page.params.id);
 
@@ -144,81 +150,35 @@
 
   <!-- board section -->
   <section class="board">
-    <!-- open line -->
-    <div class="col">
-      <div class="col-header">
-        <h2>Open <span class="count">({project.open?.length || 0})</span></h2>
-        <button class="btn small" onclick={() => (showAddTask = true)}>
-          <svg viewBox="0 0 24 24" class="icon"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-          Add task
-        </button>
+    {#each columns as col}
+      <div class="col {col.class}">
+        <div class="col-header">
+          <h2>{col.label} <span class="count">({project[col.key]?.length || 0})</span></h2>
+          {#if col.key === 'open'}
+            <button class="btn small" onclick={() => (showAddTask = true)}>
+              <svg viewBox="0 0 24 24" class="icon"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+              Add task
+            </button>
+          {/if}
+        </div>
+        {#if project[col.key] && project[col.key].length}
+          {#each project[col.key] as task (task.id || task.title)}
+            <div class="card">
+              <span class="chip"></span>
+              <h3 class="task-title">{task.title}</h3>
+              {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
+              {#if task.labels?.length}
+                <div class="labels">
+                  {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        {:else}
+          <div class="empty">{col.empty}</div>
+        {/if}
       </div>
-
-      {#if project.open && project.open.length}
-        {#each project.open as task (task.id || task.title)}
-          <div class="card">
-            <span class="chip"></span>
-            <h3 class="task-title">{task.title}</h3>
-            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-            {#if task.labels?.length}
-              <div class="labels">
-                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      {:else}
-        <div class="empty">No open tasks</div>
-      {/if}
-    </div>
-
-    <!-- in progress line -->
-    <div class="col col-mid">
-      <div class="col-header">
-        <h2>In Progress <span class="count">({project.in_progress?.length || 0})</span></h2>
-      </div>
-
-      {#if project.in_progress && project.in_progress.length}
-        {#each project.in_progress as task (task.id || task.title)}
-          <div class="card">
-            <span class="chip"></span>
-            <h3 class="task-title">{task.title}</h3>
-            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-            {#if task.labels?.length}
-              <div class="labels">
-                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      {:else}
-        <div class="empty">No tasks in progress</div>
-      {/if}
-    </div>
-
-    <!-- done line -->
-    <div class="col col-done">
-      <div class="col-header">
-        <h2>Done <span class="count">({project.done?.length || 0})</span></h2>
-      </div>
-
-      {#if project.done && project.done.length}
-        {#each project.done as task (task.id || task.title)}
-          <div class="card">
-            <span class="chip"></span>
-            <h3 class="task-title">{task.title}</h3>
-            {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
-            {#if task.labels?.length}
-              <div class="labels">
-                {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      {:else}
-        <div class="empty">Everything is done 🎉</div>
-      {/if}
-    </div>
+    {/each}
   </section>
 
 
