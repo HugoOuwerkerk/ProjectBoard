@@ -1,8 +1,6 @@
-- make notes work
 - able to move the task to open, in progress, done
 - delete a task by dragging
 - database split up in different files
 - add docker
 - add error for backend and frontend
 - in [id] svelte right now it does project = await project after task and note make it so it does not do that(performance)
-- make the api return only nesesery not the full project change it then in the code the project so you dont need to request everything

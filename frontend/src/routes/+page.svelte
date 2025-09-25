@@ -41,17 +41,23 @@
 
     const res = await fetch("http://127.0.0.1:8000/addProject/", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
+    if (!res.ok) {
+      console.error("addProject failed", await res.text());
+      return;
+    }
+
     const data = await res.json();
-    allProjects.push(data);
+
+    allProjects = [...allProjects, data];
 
     showAddProject = false;
+    form.reset();
   }
+
 
   onMount(async () => {
     allProjects = await getProjects();
@@ -103,7 +109,7 @@
             <h3>{project.title}</h3>
             <span class="badge {project.status}">{project.status}</span>
           </header>
-          <p class="desc">{project.description}</p>
+          <p class="desc">{project.short_description}</p>
           <ul class="meta">
             <li>{project.open.length} open taken</li>
             <li>{project.in_progress.length} in progress</li>

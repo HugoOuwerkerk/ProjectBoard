@@ -55,56 +55,48 @@ def row_to_dict(row: sqlite3.Row | None) -> dict:
     return dict(row) if row is not None else {}
 
 
-def build_project_dict(project_row: sqlite3.Row | None) -> dict:
-    if project_row is None:
-        return {}
+def build_projects(rows: list[sqlite3.Row]) -> list[dict]:
+    if not rows:
+        return []
 
-    project = {
-        "id": project_row["id"],
-        "title": project_row["title"],
-        "short_description": project_row["short_description"],
-        "description": project_row["description"],
-        "github": project_row["github"],
-        "website": project_row["website"],
-        "status": project_row["status"],
-        "notes": [],
-        "open": [],
-        "in_progress": [],
-        "done": [],
+    project_ids = [row["id"] for row in rows]
+    by_id = {
+        row["id"]: {
+            "id": row["id"],
+            "title": row["title"],
+            "short_description": row["short_description"],
+            "description": row["description"],
+            "github": row["github"],
+            "website": row["website"],
+            "status": row["status"],
+            "notes": [],
+            "open": [],
+            "in_progress": [],
+            "done": [],
+        }
+        for row in rows
     }
 
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute(
-        "SELECT id, body FROM note WHERE project_id = ? ORDER BY id ASC",
-        (project["id"],)
-    )
-    project["notes"] = [
-        {"id": row["id"], "desc": row["body"]}
-        for row in cur.fetchall()
-    ]
+    q_marks = ",".join("?" for _ in project_ids)
+    cur.execute(f"SELECT id, project_id, body FROM note WHERE project_id IN ({q_marks}) ORDER BY id ASC", project_ids)
+    for r in cur.fetchall():
+        by_id[r["project_id"]]["notes"].append({"id": r["id"], "desc": r["body"]})
 
-    cur.execute(
-        "SELECT id, title, desc, status, labels_json FROM task WHERE project_id = ? ORDER BY id ASC",
-        (project["id"],)
-    )
-    for row in cur.fetchall():
+    cur.execute(f"SELECT id, project_id, title, desc, status, labels_json FROM task WHERE project_id IN ({q_marks}) ORDER BY id ASC", project_ids)
+    for r in cur.fetchall():
         try:
-            labels = json.loads(row["labels_json"]) if row["labels_json"] else []
+            labels = json.loads(r["labels_json"]) if r["labels_json"] else []
         except (TypeError, json.JSONDecodeError):
             labels = []
-        task = {
-            "id": row["id"],
-            "title": row["title"],
-            "desc": row["desc"],
-            "status": row["status"],
-            "labels": labels,
-        }
-        project[row["status"]].append(task)
+        task = {"id": r["id"], "title": r["title"], "desc": r["desc"], "status": r["status"], "labels": labels}
+        by_id[r["project_id"]][r["status"]].append(task)
 
     con.close()
-    return project
+    return [by_id[i] for i in project_ids]
+
 
 
 # models
@@ -157,21 +149,23 @@ async def get_projects():
     cur.execute("SELECT * FROM project ORDER BY id ASC")
     rows = cur.fetchall()
     con.close()
+    return build_projects(rows)
 
-    return [build_project_dict(row) for row in rows]
 
 
 @app.get("/getProject/{project_id}", response_model=ProjectModel)
 async def get_project(project_id: int):
     con = get_conn()
-    cur = con.cursor()
-    cur.execute("SELECT * FROM project WHERE id = ?", (project_id,))
-    row = cur.fetchone()
-    con.close()
+    try:
+        cur = con.cursor()
+        cur.execute("SELECT * FROM project WHERE id = ?", (project_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return build_projects([row])[0]
+    finally:
+        con.close()
 
-    if not row:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return build_project_dict(row)
 
 
 @app.post("/addProject/", response_model=ProjectModel)
@@ -198,52 +192,76 @@ async def add_project(project_data: ProjectCreate):
 
     if new_id is None:
         raise HTTPException(status_code=500, detail="Failed to create project")
-    return await get_project(new_id)
 
+    return {
+        "id": new_id,
+        "title": project_data.title,
+        "short_description": project_data.short_description,
+        "description": project_data.description,
+        "github": project_data.github,
+        "website": project_data.website,
+        "status": project_data.status,
+        "notes": [],
+        "open": [],
+        "in_progress": [],
+        "done": [],
+    }
 
 @app.patch("/projects/{project_id}", response_model=ProjectModel)
 async def edit_project(project_id: int, updates: dict):
     con = get_conn()
     cur = con.cursor()
-    cur.execute("SELECT * FROM project WHERE id = ?", (project_id,))
-    row = cur.fetchone()
-    if not row:
+
+    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
 
-    allowed = {"title", "short_description", "description", "github", "website", "status"}
-    sets = []
-    params = []
-    for key, value in updates.items():
-        if key in allowed:
-            sets.append(f"{key} = ?")
-            params.append(value)
+    title             = updates.get("title")
+    short_description = updates.get("short_description")
+    description       = updates.get("description")
+    github            = updates.get("github")
+    website           = updates.get("website")
+    status            = updates.get("status")
 
-    if sets:
-        params.append(project_id)
-        sql = f"UPDATE project SET {', '.join(sets)} WHERE id = ?"
-        cur.execute(sql, tuple(params))
-        con.commit()
+    if status is not None and status not in {"idea","active","paused","done"}:
+        con.close()
+        raise HTTPException(status_code=400, detail="Invalid project status")
 
+    cur.execute(
+        """
+        UPDATE project
+           SET title             = COALESCE(?, title),
+               short_description = COALESCE(?, short_description),
+               description       = COALESCE(?, description),
+               github            = COALESCE(?, github),
+               website           = COALESCE(?, website),
+               status            = COALESCE(?, status)
+         WHERE id = ?
+        """,
+        (title, short_description, description, github, website, status, project_id)
+    )
+    con.commit()
     con.close()
+    # chane in future to return updated fields only
     return await get_project(project_id)
 
 
 # -------- Tasks --------
-@app.post("/projects/{project_id}/tasks", response_model=ProjectModel)
+@app.post("/projects/{project_id}/tasks", response_model=dict)
 async def add_task(project_id: int, task: dict):
     con = get_conn()
     cur = con.cursor()
+
     cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
     if cur.fetchone() is None:
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
 
-    title = task.get("title")
+    title = (task.get("title") or "").strip()
     if not title:
         con.close()
         raise HTTPException(status_code=400, detail="Task title cannot be empty")
-    title = title.strip()
 
     desc = task.get("desc")
     status = task.get("status") or "open"
@@ -255,22 +273,35 @@ async def add_task(project_id: int, task: dict):
     try:
         labels_json = json.dumps(labels, ensure_ascii=False)
     except (TypeError, json.JSONDecodeError):
+        labels = []
         labels_json = "[]"
 
-    cur.execute(
-        """
-        INSERT INTO task (project_id, title, desc, status, labels_json)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (project_id, title, desc, status, labels_json),
-    )
-    con.commit()
+    try:
+        cur.execute(
+            """
+            INSERT INTO task (project_id, title, desc, status, labels_json)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, title, desc, status, labels_json),
+        )
+        task_id = cur.lastrowid
+        con.commit()
+    except sqlite3.IntegrityError as e:
+        con.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
     con.close()
 
-    return await get_project(project_id)
+    return {
+        "id": task_id,
+        "title": title,
+        "desc": desc,
+        "status": status,
+        "labels": labels,
+    }
 
 
-@app.delete("/projects/{project_id}/tasks/{task_id}", response_model=ProjectModel)
+@app.delete("/projects/{project_id}/tasks/{task_id}", response_model=dict)
 async def delete_task(project_id: int, task_id: int):
     con = get_conn()
     cur = con.cursor()
@@ -280,103 +311,137 @@ async def delete_task(project_id: int, task_id: int):
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
 
-    cur.execute("DELETE FROM task WHERE id = ? AND project_id = ?", (task_id, project_id))
+    cur.execute(
+        "DELETE FROM task WHERE id = ? AND project_id = ?",
+        (task_id, project_id)
+    )
     if cur.rowcount == 0:
         con.close()
         raise HTTPException(status_code=404, detail="Task not found")
 
     con.commit()
     con.close()
-    return await get_project(project_id)
+
+    return {"success": True, "deleted_task_id": task_id}
 
 
-@app.patch("/projects/{project_id}/tasks/{task_id}", response_model=ProjectModel)
+@app.patch("/projects/{project_id}/tasks/{task_id}", response_model=dict)
 async def update_task(project_id: int, task_id: int, updates: dict):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM task WHERE id = ? AND project_id = ?", (task_id, project_id))
-    if cur.fetchone() is None:
+    cur.execute("SELECT id FROM task WHERE id = ? AND project_id = ?",(task_id, project_id))
+    if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Task not found")
 
-    allowed = {"title", "desc", "status", "labels"}
-    sets = []
-    params = []
+    title  = updates.get("title")
+    desc   = updates.get("desc")
+    status = updates.get("status")
+    labels_json = (
+        json.dumps(updates["labels"], ensure_ascii=False)
+        if "labels" in updates else None
+    )
 
-    for key, value in updates.items():
-        if key not in allowed:
-            continue
-        if key == "labels":
-            try:
-                labels_json_value = json.dumps(value or [], ensure_ascii=False)
-            except (TypeError, json.JSONDecodeError):
-                labels_json_value = "[]"
-            sets.append("labels_json = ?")
-            params.append(labels_json_value)
-        elif key == "status":
-            if value not in {"open", "in_progress", "done"}:
-                con.close()
-                raise HTTPException(status_code=400, detail="Invalid task status")
-            sets.append("status = ?")
-            params.append(value)
-        elif key == "title":
-            if not (value or "").strip():
-                con.close()
-                raise HTTPException(status_code=400, detail="Task title cannot be empty")
-            sets.append("title = ?")
-            params.append(value)
-        elif key == "desc":
-            sets.append("desc = ?")
-            params.append(value)
-
-    if sets:
-        params.extend([task_id, project_id])
-        sql = f"UPDATE task SET {', '.join(sets)} WHERE id = ? AND project_id = ?"
-        cur.execute(sql, tuple(params))
+    try:
+        cur.execute(
+            """
+            UPDATE task
+               SET title       = COALESCE(?, title),
+                   desc        = COALESCE(?, desc),
+                   status      = COALESCE(?, status),
+                   labels_json = COALESCE(?, labels_json)
+             WHERE id = ? AND project_id = ?
+            """,
+            (title, desc, status, labels_json, task_id, project_id)
+        )
         con.commit()
+    except sqlite3.IntegrityError as e:
+        con.close()
+        raise HTTPException(status_code=400, detail=str(e))
 
     con.close()
-    return await get_project(project_id)
+
+    return {
+        "id": task_id,
+        "title": updates.get("title"),
+        "desc": updates.get("desc"),
+        "status": updates.get("status"),
+        "labels": updates.get("labels", []),
+    }
 
 
 # -------- Notes --------
-@app.get("/projects/{project_id}/notes", response_model=list[dict])
-async def get_notes(project_id: int):
-    con = get_conn()
-    cur = con.cursor()
-    cur.execute("SELECT id, desc FROM note WHERE project_id = ?", (project_id,))
-    notes = [{"id": row[0], "desc": row[1]} for row in cur.fetchall()]
-    con.close()
-    return notes
-
 
 @app.post("/projects/{project_id}/notes", response_model=dict)
 async def add_note(project_id: int, note: dict):
+    body = (note.get("desc") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Note body cannot be empty")
+
     con = get_conn()
     cur = con.cursor()
-    cur.execute("INSERT INTO note (project_id, body) VALUES (?, ?)", (project_id, note.get("desc")))
+    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cur.execute("INSERT INTO note (project_id, body) VALUES (?, ?)", (project_id, body))
+    note_id = cur.lastrowid
     con.commit()
-    # note_id = cur.lastrowid
     con.close()
-    return await get_project(project_id)
+    return {"id": note_id, "desc": body}
+
 
 
 @app.patch("/projects/{project_id}/notes/{note_id}", response_model=dict)
 async def edit_note(project_id: int, note_id: int, updates: dict):
     con = get_conn()
     cur = con.cursor()
-    cur.execute("UPDATE note SET body = ? WHERE id = ? AND project_id = ?", (updates.get("desc"), note_id, project_id))
+
+    cur.execute(
+        "SELECT id FROM note WHERE id = ? AND project_id = ?",
+        (note_id, project_id)
+    )
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    body = updates.get("desc")
+
+    cur.execute(
+        """
+        UPDATE note
+           SET body = COALESCE(?, body)
+         WHERE id = ? AND project_id = ?
+        """,
+        (body, note_id, project_id)
+    )
     con.commit()
     con.close()
-    return await get_project(project_id)
+
+    return {"id": note_id, "desc": updates.get("desc")}
 
 
-@app.delete("/projects/{project_id}/notes/{note_id}")
+@app.delete("/projects/{project_id}/notes/{note_id}", response_model=dict)
 async def delete_note(project_id: int, note_id: int):
     con = get_conn()
     cur = con.cursor()
-    cur.execute("DELETE FROM note WHERE id = ? AND project_id = ?", (note_id, project_id))
+
+    cur.execute(
+        "SELECT id FROM note WHERE id = ? AND project_id = ?",
+        (note_id, project_id)
+    )
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    cur.execute(
+        "DELETE FROM note WHERE id = ? AND project_id = ?",
+        (note_id, project_id)
+    )
     con.commit()
     con.close()
-    return await get_project(project_id)
+
+    return {"success": True, "deleted_note_id": note_id}
+

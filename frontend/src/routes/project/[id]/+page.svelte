@@ -26,49 +26,90 @@
     const form = e.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
 
-    //needs change(easyer way, changes in api mayby or in the ui)
     let rawLabels = formData.get("labels");
-    let labels: string[] = []; 
+    let labels: string[] = [];
     if (rawLabels) {
       labels = rawLabels
         .toString()
         .split(",")
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
     }
 
     const payload = {
       title: formData.get("title"),
       desc: formData.get("description"),
-      labels: labels
+      labels
     };
 
     const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    project = await res.json();
+    const created = await res.json();
+    const colKey = created.status || "open";
+    project[colKey] = [...(project[colKey] || []), created];
+
     showAddTask = false;
+    form.reset();
   }
 
   async function deleteTask(taskId: number) {
-    await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`, {
-      method: "DELETE"
-    });
-    await getProject();
+    const res = await fetch(
+      `http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`,
+      { method: "DELETE" }
+    );
+
+    if (res.ok) {
+      for (const col of columns) {
+        if (project[col.key]) {
+          project[col.key] = project[col.key].filter((t: any) => t.id !== taskId);
+        }
+      }
+    }
   }
+  
+  function findTaskColumn(taskId: number): string | null {
+  for (const col of columns) {
+    const list = project[col.key] || [];
+    if (list.some((t: any) => t.id === taskId)) return col.key;
+  }
+  return null;
+}
   // not added yet
   async function updateTaskStatus(taskId: number, newStatus: string) {
-    await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus })
-    });
-    await getProject();
+    const res = await fetch(
+      `http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      }
+    );
+
+    const updated = await res.json(); // { id, status, ...maybe others }
+
+    const fromKey = findTaskColumn(taskId);
+    const toKey = updated.status || newStatus;
+
+    if (!toKey) return;
+
+    // Remove from old column
+    if (fromKey && project[fromKey]) {
+      const existing = project[fromKey].find((t: any) => t.id === taskId);
+      project[fromKey] = project[fromKey].filter((t: any) => t.id !== taskId);
+
+      // Use the freshest data we got back (fall back to existing)
+      const moved = existing ? { ...existing, ...updated } : updated;
+
+      // Add to new column
+      project[toKey] = [...(project[toKey] || []), moved];
+    } else {
+      // If not found anywhere, just append to destination as a fallback
+      project[toKey] = [...(project[toKey] || []), updated];
+    }
   }
 
   async function editProject(e: SubmitEvent) {
@@ -91,7 +132,7 @@
       body: JSON.stringify(payload)
     });
 
-    project = await res.json();
+    project = await res.json(); // full ProjectModel
     showEditProject = false;
   }
 
@@ -100,25 +141,29 @@
     const form = e.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
 
-    const payload = {
-      desc: formData.get("note")
-    };
+    const payload = { desc: formData.get("note") };
 
     const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    await getProject();
+
+    const created = await res.json();
+    project.notes = [...(project.notes || []), created];
+
     showAddNote = false;
-
+    form.reset();
   }
-
   async function deleteNote(noteId: number) {
-    await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`, {
-      method: "DELETE"
-    });
-    await getProject();
+    const res = await fetch(
+      `http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`,
+      { method: "DELETE" }
+    );
+
+    if (res.ok) {
+      project.notes = (project.notes || []).filter((n: any) => n.id !== noteId);
+    }
   }
 
   onMount(async () => {
