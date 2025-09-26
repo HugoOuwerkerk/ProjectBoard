@@ -34,6 +34,7 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
    git clone https://github.com/HugoOuwerkerk/ProjectBoard.git
    cd projectboard
 ```
+
 2. Build and start the containers:
 ```bash
    docker compose up -d
@@ -84,6 +85,7 @@ Runs on http://localhost:8000
 
 ## Project Structure
 
+```text
 ProjectBoard
 ├── backend
 │   ├── app
@@ -124,6 +126,7 @@ ProjectBoard
 ├── package.json
 ├── package-lock.json
 └── README.md
+```
 
 ---
 
