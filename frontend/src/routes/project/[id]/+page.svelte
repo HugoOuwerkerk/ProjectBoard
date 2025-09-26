@@ -10,16 +10,33 @@
   ];
 
   let project = $state<any>(null);
-  let projectId = $derived($page.params.id);
+  let loaded = $state(false);
+  let loadError = $state<string | null>(null);
 
   let showAddTask = $state(false);
   let showEditProject = $state(false);
   let showAddNote = $state(false);
 
-  async function getProject() {
-    const res = await fetch(`http://127.0.0.1:8000/getProject/${projectId}`);
-    project = await res.json();
-  }
+ async function getProject() {
+   loadError = null;
+   project = null;
+   const id = $page.params.id;           // read it at call time
+   if (!id) { loaded = true; return; }
+   try {
+    const res = await fetch(`/api/getProject/${id}`);
+     if (!res.ok) {
+       loadError = `HTTP ${res.status}: ${await res.text()}`;
+       project = null;
+     } else {
+       project = await res.json();
+     }
+   } catch (e: any) {
+     loadError = e?.message ?? 'Network error';
+     project = null;
+   } finally {
+     loaded = true;`    `
+   }
+ }
 
   async function addTask(e: SubmitEvent) {
     e.preventDefault();
@@ -42,7 +59,7 @@
       labels
     };
 
-    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks`, {
+    const res = await fetch(`api/projects/${project.id}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -58,7 +75,7 @@
 
   async function deleteTask(taskId: number) {
     const res = await fetch(
-      `http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`,
+      `api/projects/${project.id}/tasks/${taskId}`,
       { method: "DELETE" }
     );
 
@@ -81,7 +98,7 @@
   // not added yet
   async function updateTaskStatus(taskId: number, newStatus: string) {
     const res = await fetch(
-      `http://127.0.0.1:8000/projects/${projectId}/tasks/${taskId}`,
+      `api/projects/${project.id}/tasks/${taskId}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -126,7 +143,7 @@
       status: formData.get("status")
     };
 
-    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}`, {
+    const res = await fetch(`api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -143,7 +160,7 @@
 
     const payload = { desc: formData.get("note") };
 
-    const res = await fetch(`http://127.0.0.1:8000/projects/${projectId}/notes`, {
+    const res = await fetch(`api/projects/${project.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -157,7 +174,7 @@
   }
   async function deleteNote(noteId: number) {
     const res = await fetch(
-      `http://127.0.0.1:8000/projects/${projectId}/notes/${noteId}`,
+      `api/projects/${project.id}/notes/${noteId}`,
       { method: "DELETE" }
     );
 
@@ -347,7 +364,14 @@
 
 </main>
 {:else}
-  <p>Project not found</p>
+  {#if !loaded}
+    <p>Loading…</p>
+  {:else if loadError}
+    <p>Project not found</p>
+    <pre class="error">{loadError}</pre>
+  {:else}
+    <p>Project not found</p>
+  {/if}
 {/if}
 
 

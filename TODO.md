@@ -1,3 +1,2 @@
-- able to move the task to open, in progress, done
 - delete a task by dragging
 - add docker

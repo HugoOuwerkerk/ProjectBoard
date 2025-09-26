@@ -4,11 +4,13 @@ from pydantic import BaseModel
 from typing import Literal
 import sqlite3
 import json
+import os
 
 
 # DB
 def get_conn():
-    con = sqlite3.connect("projects.db")
+    db_path = os.getenv("DB_PATH", "projects.db")
+    con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON;")
     return con
