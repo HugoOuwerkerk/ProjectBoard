@@ -30,11 +30,14 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
 ### Installation
 
 1. Clone this repo:
+```bash
    git clone https://github.com/HugoOuwerkerk/ProjectBoard.git
    cd projectboard
-
+```
 2. Build and start the containers:
+```bash
    docker compose up -d
+```
 
 3. Open in browser:
    http://localhost:8080
@@ -44,15 +47,19 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
 ## Development
 
 ### Frontend
-cd frontend  
-npm install  
-npm run dev  
+```bash
+cd frontend
+npm install
+npm run dev
+```
 Runs on http://localhost:5173
 
 ### Backend
+```bash
 cd backend  
 poetry install  
 poetry run uvicorn app.main:app --reload  
+```
 Runs on http://localhost:8000
 
 ---
