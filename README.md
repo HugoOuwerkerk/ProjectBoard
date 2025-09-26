@@ -16,12 +16,6 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
 
 ---
 
-## Screenshots
-
-*(add your own later — landing page, project detail, board, etc.)*
-
----
-
 ## Tech Stack
 
 - Frontend: [SvelteKit](https://kit.svelte.dev/) + TypeScript + Vite  
@@ -33,14 +27,10 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
 
 ## Getting Started
 
-### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed
-- Git
-
 ### Installation
 
 1. Clone this repo:
-   git clone https://github.com/yourusername/projectboard.git
+   git clone https://github.com/HugoOuwerkerk/ProjectBoard.git
    cd projectboard
 
 2. Build and start the containers:
@@ -87,36 +77,46 @@ Runs on http://localhost:8000
 
 ## Project Structure
 
-ProjectBoard/  
-├── backend/              # FastAPI app  
-│   ├── app/  
-│   │   ├── main.py       # API routes + DB setup  
-│   │   └── mock_data.json  
-│   ├── poetry.lock  
-│   └── pyproject.toml  
-│  
-├── frontend/             # SvelteKit app  
-│   ├── src/  
-│   │   ├── routes/       # +page.svelte files  
-│   │   └── lib/          # components  
-│   ├── package.json  
-│   └── vite.config.ts  
-│  
-├── docker-compose.yml    # Multi-container setup  
-└── README.md  
-
----
-
-## Accessing on Other Devices
-
-If you want to open ProjectBoard on your phone (same Wi-Fi as PC):
-
-1. Find your PC IP:  
-   hostname -I  
-   Example: 192.168.178.106
-
-2. Open on phone:  
-   http://192.168.178.106:8080
+ProjectBoard
+├── backend
+│   ├── app
+│   │   └── main.py
+│   ├── Dockerfile
+│   ├── poetry.lock
+│   ├── projects.db
+│   └── pyproject.toml
+├── docker-compose.yml
+├── frontend
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── src
+│   │   ├── app.d.ts
+│   │   ├── app.html
+│   │   ├── lib
+│   │   │   ├── assets
+│   │   │   │   ├── favicon.png
+│   │   │   │   └── logo.png
+│   │   │   ├── components
+│   │   │   │   └── Modal.svelte
+│   │   │   ├── index.ts
+│   │   │   └── style.css
+│   │   └── routes
+│   │       ├── +layout.svelte
+│   │       ├── +page.svelte
+│   │       └── project
+│   │           └── [id]
+│   │               ├── +layout.svelte
+│   │               └── +page.svelte
+│   ├── static
+│   │   └── robots.txt
+│   ├── svelte.config.js
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── package.json
+├── package-lock.json
+└── README.md
 
 ---
 
@@ -129,14 +129,11 @@ MIT — do whatever you want, but attribution is appreciated.
 ## Future Ideas
 
 - User authentication (multi-user support)  
-- Drag & drop task reordering  
 - Tags/labels with colors  
 - Export/import projects  
-- Deployment templates (Fly.io, Railway, etc.)
-
 ---
 
 ## Author
 
-Made by [Your Name]  
+Made by Hugo Ouwerkerk
 Inspired by the need for a simple, self-hosted project tracker.
