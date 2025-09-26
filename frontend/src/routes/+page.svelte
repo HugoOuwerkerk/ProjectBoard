@@ -21,7 +21,7 @@
   });
 
   async function getProjects() {
-    const res = await fetch("api/getProjects");
+    const res = await fetch("/api/getProjects");
     return await res.json();
   }
 
@@ -39,7 +39,7 @@
       status: formData.get("status")
     };
 
-    const res = await fetch("api/addProject/", {
+    const res = await fetch("/api/addProject/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)

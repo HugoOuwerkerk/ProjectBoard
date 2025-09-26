@@ -1,2 +1,0 @@
-- delete a task by dragging
-- add docker

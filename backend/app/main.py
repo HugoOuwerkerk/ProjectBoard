@@ -372,6 +372,21 @@ async def update_task(project_id: int, task_id: int, updates: dict):
         "labels": updates.get("labels", []),
     }
 
+@app.delete("/projects/{project_id}", response_model=dict)
+async def delete_project(project_id: int):
+    con = get_conn()
+    cur = con.cursor()
+
+    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cur.execute("DELETE FROM project WHERE id = ?", (project_id,))
+    con.commit()
+    con.close()
+
+    return {"success": True, "deleted_project_id": project_id}
 
 # -------- Notes --------
 

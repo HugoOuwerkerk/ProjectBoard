@@ -285,6 +285,22 @@ body {
   display: flex;
   justify-content: flex-start;
 }
+.page-actions .push-right { margin-left: auto; }
+
+/* Danger button: same base as .btn, just red accents */
+.btn.danger {
+  border-color: rgba(255, 107, 107, 0.35);
+  color: #ff6b6b;
+  background: var(--btn);            /* same as Back */
+}
+
+.btn.danger:hover {
+  background: rgba(255, 107, 107, 0.12); /* subtle red hover */
+  border-color: rgba(255, 107, 107, 0.55);
+  color: #ffffff;
+}
+
+.btn.danger:active { transform: translateY(1px); }
 
 /* Small icon helper */
 .icon { width: 16px; height: 16px; display: inline-block; }

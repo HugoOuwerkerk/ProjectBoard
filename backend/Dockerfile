@@ -6,7 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install Poetry & deps (system build tools if needed)
 RUN pip install --no-cache-dir poetry && \
     apt-get update && apt-get install -y --no-install-recommends build-essential && \
     rm -rf /var/lib/apt/lists/*
@@ -16,7 +15,6 @@ RUN poetry config virtualenvs.create false && poetry install --no-interaction --
 
 COPY app /app/app
 
-# Default DB path (overridden in compose)
 ENV DB_PATH=/data/projects.db
 
 EXPOSE 8000

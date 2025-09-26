@@ -20,7 +20,7 @@
  async function getProject() {
    loadError = null;
    project = null;
-   const id = $page.params.id;           // read it at call time
+   const id = $page.params.id;
    if (!id) { loaded = true; return; }
    try {
     const res = await fetch(`/api/getProject/${id}`);
@@ -34,9 +34,21 @@
      loadError = e?.message ?? 'Network error';
      project = null;
    } finally {
-     loaded = true;`    `
+     loaded = true;
    }
  }
+
+ async function deleteProject() {
+  const res = await fetch(`/api/projects/${project.id}`, {
+    method: "DELETE"
+  });
+
+  if (res.ok) {
+    window.location.href = "/";
+  } else {
+    alert("Failed to delete project");
+  }
+}
 
   async function addTask(e: SubmitEvent) {
     e.preventDefault();
@@ -59,7 +71,7 @@
       labels
     };
 
-    const res = await fetch(`api/projects/${project.id}/tasks`, {
+    const res = await fetch(`/api/projects/${project.id}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -75,7 +87,7 @@
 
   async function deleteTask(taskId: number) {
     const res = await fetch(
-      `api/projects/${project.id}/tasks/${taskId}`,
+      `/api/projects/${project.id}/tasks/${taskId}`,
       { method: "DELETE" }
     );
 
@@ -98,7 +110,7 @@
   // not added yet
   async function updateTaskStatus(taskId: number, newStatus: string) {
     const res = await fetch(
-      `api/projects/${project.id}/tasks/${taskId}`,
+      `/api/projects/${project.id}/tasks/${taskId}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -106,25 +118,21 @@
       }
     );
 
-    const updated = await res.json(); // { id, status, ...maybe others }
+    const updated = await res.json();
 
     const fromKey = findTaskColumn(taskId);
     const toKey = updated.status || newStatus;
 
     if (!toKey) return;
 
-    // Remove from old column
     if (fromKey && project[fromKey]) {
       const existing = project[fromKey].find((t: any) => t.id === taskId);
       project[fromKey] = project[fromKey].filter((t: any) => t.id !== taskId);
 
-      // Use the freshest data we got back (fall back to existing)
       const moved = existing ? { ...existing, ...updated } : updated;
 
-      // Add to new column
       project[toKey] = [...(project[toKey] || []), moved];
     } else {
-      // If not found anywhere, just append to destination as a fallback
       project[toKey] = [...(project[toKey] || []), updated];
     }
   }
@@ -143,13 +151,13 @@
       status: formData.get("status")
     };
 
-    const res = await fetch(`api/projects/${project.id}`, {
+    const res = await fetch(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    project = await res.json(); // full ProjectModel
+    project = await res.json();
     showEditProject = false;
   }
 
@@ -160,7 +168,7 @@
 
     const payload = { desc: formData.get("note") };
 
-    const res = await fetch(`api/projects/${project.id}/notes`, {
+    const res = await fetch(`/api/projects/${project.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -174,7 +182,7 @@
   }
   async function deleteNote(noteId: number) {
     const res = await fetch(
-      `api/projects/${project.id}/notes/${noteId}`,
+      `/api/projects/${project.id}/notes/${noteId}`,
       { method: "DELETE" }
     );
 
@@ -200,6 +208,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true" class="icon"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
       Back
     </a>
+    <button class="btn danger push-right" onclick={deleteProject}>Delete Project</button>
   </nav>
   <header class="header">
     <h1>{project.title}</h1>
