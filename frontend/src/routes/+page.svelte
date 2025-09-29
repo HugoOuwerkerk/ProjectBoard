@@ -67,7 +67,7 @@
 <main class="landing">
   <header class="header">
     <h1>ProjectBoard</h1>
-    <p>Organiseer je projecten, notities en taken op één plek.</p>
+    <p>Organize your projects, notes, and tasks in one place.</p>
   </header>
 
   <!-- projects section -->
@@ -119,7 +119,7 @@
             <a
               class="link"
               href="/project/{project.id}"
-              aria-label="Open project">Openen →</a
+              aria-label="Open project">open →</a
             >
           </footer>
         </article>

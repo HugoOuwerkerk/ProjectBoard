@@ -107,35 +107,66 @@
   }
   return null;
 }
-  // not added yet
-  async function updateTaskStatus(taskId: number, newStatus: string) {
-    const res = await fetch(
-      `/api/projects/${project.id}/tasks/${taskId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
-      }
-    );
 
-    const updated = await res.json();
-
-    const fromKey = findTaskColumn(taskId);
-    const toKey = updated.status || newStatus;
-
-    if (!toKey) return;
-
-    if (fromKey && project[fromKey]) {
-      const existing = project[fromKey].find((t: any) => t.id === taskId);
-      project[fromKey] = project[fromKey].filter((t: any) => t.id !== taskId);
-
-      const moved = existing ? { ...existing, ...updated } : updated;
-
-      project[toKey] = [...(project[toKey] || []), moved];
-    } else {
-      project[toKey] = [...(project[toKey] || []), updated];
+function patchDefined<T extends Record<string, any>>(base: T, partial: Partial<T>): T {
+  const out = { ...base };
+  for (const k in partial) {
+    if (Object.prototype.hasOwnProperty.call(partial, k) && partial[k] !== undefined) {
+      (out as any)[k] = partial[k];
     }
   }
+  return out;
+}
+
+async function updateTaskStatus(taskId: number, newStatus: string) {
+  // find current column + task
+  const fromKey = findTaskColumn(taskId);
+  const toKey = newStatus;
+  if (!toKey) return;
+
+  const existing =
+    fromKey && project[fromKey]
+      ? project[fromKey].find((t: any) => t.id === taskId)
+      : null;
+
+  // optimistic move
+  if (fromKey && project[fromKey]) {
+    project[fromKey] = project[fromKey].filter((t: any) => t.id !== taskId);
+  }
+  const optimistic = existing ? { ...existing, status: toKey } : { id: taskId, status: toKey };
+  project[toKey] = [...(project[toKey] || []), optimistic];
+
+  try {
+    const res = await fetch(`/api/projects/${project.id}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const updated = await res.json();
+
+    // patch only defined fields so we don't nuke title/desc/labels when backend omits them
+    project[toKey] = project[toKey].map((t: any) =>
+      t.id === taskId
+        ? patchDefined(t, {
+            title: updated.title,
+            desc: updated.desc,
+            status: updated.status,
+            labels: updated.labels
+          })
+        : t
+    );
+  } catch (err: any) {
+    // revert on failure
+    project[toKey] = (project[toKey] || []).filter((t: any) => t.id !== taskId);
+    if (fromKey) {
+      project[fromKey] = [...(project[fromKey] || []), existing];
+    }
+    alert(err?.message ?? "Failed to update task");
+  }
+}
+
 
   async function editProject(e: SubmitEvent) {
     e.preventDefault();
@@ -251,7 +282,7 @@
 
   <!-- board section -->
   <section class="board">
-    {#each columns as col}
+    {#each columns as col, colIdx}
       <div class="col {col.class}">
         <div class="col-header">
           <h2>{col.label} <span class="count">({project[col.key]?.length || 0})</span></h2>
@@ -270,10 +301,33 @@
               {#if task.desc}<p class="task-desc">{task.desc}</p>{/if}
               {#if task.labels?.length}
                 <div class="labels">
-                  {#each task.labels as label}<span class="label">{label.name ?? label}</span>{/each}
+                  {#each task.labels as label}
+                    <span class="label">{label.name ?? label}</span>
+                  {/each}
                 </div>
               {/if}
-              <button class="btn delete-task" title="Delete task" onclick={() => (deleteTask(task.id))}>🗑️</button>
+
+              <!-- Card actions footer -->
+              <div class="card-actions">
+                <div class="left-actions">
+                  {#if colIdx > 0}
+                    <button class="btn small move-left" title="Move left" onclick={() => updateTaskStatus(task.id, columns[colIdx - 1].key)}>
+                      <svg viewBox="0 0 24 24" class="icon_t"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                    </button>
+                  {/if}
+                </div>
+                <div class="right-actions">
+                  {#if colIdx < columns.length - 1}
+                    <button class="btn small move-right" title="Move right" onclick={() => updateTaskStatus(task.id, columns[colIdx + 1].key)}>
+                      <svg viewBox="0 0 24 24" class="icon_t"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                    </button>
+                  {/if}
+                  
+                  <button class="btn small delete-task" title="Delete task" onclick={() => deleteTask(task.id)}>
+                    <svg viewBox="0 0 24 24" class="icon_t"><path d="M6 7h12M10 11v6m4-6v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
           {/each}
         {:else}

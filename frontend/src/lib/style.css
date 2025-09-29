@@ -463,23 +463,6 @@ body {
 .task-desc  { margin: 0; font-size: 13px; color: var(--muted); }
 .empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 
-.btn.delete-task {
-  align-self: flex-start;
-  display: inline-flex;
-  gap: 6px;
-  margin: 10px 0 0 0;
-  padding: 4px 8px;
-  font-size: 14px;
-  background: transparent;
-  border: 1px solid var(--stroke);
-  color: #ff6b6b;
-  border-radius: 8px;
-}
-.btn.delete-task:hover {
-  background: rgba(255,107,107,0.12);
-  color: #fff;
-}
-
 /* Project detail responsive */
 @media (max-width: 900px) {
   .project-details { grid-template-columns: 1fr; padding: 14px; }
@@ -505,3 +488,24 @@ body {
     gap: 72px;
   }
 }
+/* Card footer actions */
+.card-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.left-actions,.right-actions{display:flex;gap:6px}
+
+/* Base small buttons */
+.btn.small.move-left,
+.btn.small.move-right,
+.btn.small.delete-task{
+  padding:4px 8px;border-radius:8px;font-size:13px;background:transparent;border:1px solid var(--stroke);
+  color:var(--muted);transition:background .15s,color .15s,border-color .15s
+}
+.btn.small.move-left:hover{background:rgba(155,231,187,.1);color:#9be7bb;border-color:var(--field-border-focus)}
+.btn.small.move-right:hover{background:rgba(160,196,255,.1);color:#a0c4ff;border-color:var(--field-border-focus)}
+.btn.small.delete-task{color:#ff6b6b}
+.btn.small.delete-task:hover{background:rgba(255,107,107,.12);color:#fff;border-color:rgba(255,107,107,.55)}
+
+/* SVGs inside buttons */
+.icon_t{width:20px;height:20px;stroke:currentColor;fill:none;display:block}
+
+
+

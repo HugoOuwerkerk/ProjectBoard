@@ -332,7 +332,10 @@ async def update_task(project_id: int, task_id: int, updates: dict):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM task WHERE id = ? AND project_id = ?",(task_id, project_id))
+    cur.execute(
+        "SELECT 1 FROM task WHERE id = ? AND project_id = ?",
+        (task_id, project_id)
+    )
     if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Task not found")
@@ -358,6 +361,16 @@ async def update_task(project_id: int, task_id: int, updates: dict):
             (title, desc, status, labels_json, task_id, project_id)
         )
         con.commit()
+        
+        cur.execute(
+            "SELECT id, title, desc, status, labels_json FROM task WHERE id = ? AND project_id = ?",
+            (task_id, project_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            con.close()
+            raise HTTPException(status_code=500, detail="Row missing after update")
+
     except sqlite3.IntegrityError as e:
         con.close()
         raise HTTPException(status_code=400, detail=str(e))
@@ -365,12 +378,13 @@ async def update_task(project_id: int, task_id: int, updates: dict):
     con.close()
 
     return {
-        "id": task_id,
-        "title": updates.get("title"),
-        "desc": updates.get("desc"),
-        "status": updates.get("status"),
-        "labels": updates.get("labels", []),
+        "id": row["id"],
+        "title": row["title"],
+        "desc": row["desc"],
+        "status": row["status"],
+        "labels": json.loads(row["labels_json"] or "[]"),
     }
+
 
 @app.delete("/projects/{project_id}", response_model=dict)
 async def delete_project(project_id: int):
