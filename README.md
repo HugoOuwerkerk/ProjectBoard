@@ -12,6 +12,8 @@ Built with SvelteKit (frontend) and FastAPI (backend), running in Docker.
 - Add notes to each project for quick ideas or documentation
 - Simple search & filter on the landing page
 - Clean, dark UI with responsive design
+- Private project views per signed-in account
+- Strong password policy for new signups (min 10 chars with upper, lower, digit, special)
 - Fully self-hosted with Docker Compose
 
 ---
@@ -63,6 +65,10 @@ poetry run uvicorn app.main:app --reload
 ```
 Runs on http://localhost:8000
 
+Before launching in development or production, copy `backend/.env.example` to `backend/.env` and set a strong `DEFAULT_ADMIN_PASSWORD` that meets the signup password policy (≥10 chars, upper, lower, digit, special). The first time the API starts, `init_db()` will automatically create the user/session tables and seed the admin account if none exists (any legacy projects are assigned to that admin during the migration), so make sure the backend runs at least once after configuring your environment file.
+
+When shipping to production, flip `SESSION_COOKIE_SECURE=true` in `.env`, run behind HTTPS, and consider adding reverse-proxy rate limiting and basic monitoring to keep the public signup endpoint healthy.
+
 ---
 
 ## API Endpoints (Backend)
@@ -72,6 +78,11 @@ Runs on http://localhost:8000
 - POST /addProject/ → Add a new project  
 - PATCH /projects/{id} → Update a project  
 - DELETE /projects/{id} → Delete a project  
+
+- POST /login → Authenticate with username/password  
+- POST /signup → Create a new user account  
+- POST /logout → Clear the active session  
+- GET /me → Inspect the current session user  
 
 - POST /projects/{id}/tasks → Add a task  
 - PATCH /projects/{id}/tasks/{taskId} → Update a task  
