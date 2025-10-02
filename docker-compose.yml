@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     environment:
       - DB_PATH=/data/projects.db
+    env_file:
+      - backend/.env
     volumes:
       - db:/data
     expose:
