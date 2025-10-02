@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import Modal from '$lib/components/Modal.svelte';
   import { onMount } from 'svelte';
@@ -17,85 +18,133 @@
   let showEditProject = $state(false);
   let showAddNote = $state(false);
 
- async function getProject() {
-   loadError = null;
-   project = null;
-   const id = $page.params.id;
-   if (!id) { loaded = true; return; }
-   try {
-    const res = await fetch(`/api/getProject/${id}`);
-     if (!res.ok) {
-       loadError = `HTTP ${res.status}: ${await res.text()}`;
-       project = null;
-     } else {
-       project = await res.json();
-     }
-   } catch (e: any) {
-     loadError = e?.message ?? 'Network error';
-     project = null;
-   } finally {
-     loaded = true;
-   }
- }
-
- async function deleteProject() {
-  const res = await fetch(`/api/projects/${project.id}`, {
-    method: "DELETE"
-  });
-
-  if (res.ok) {
-    window.location.href = "/";
-  } else {
-    alert("Failed to delete project");
+  async function authedFetch(input: RequestInfo, init?: RequestInit) {
+    const res = await fetch(input, init);
+    if (res.status === 401) {
+      await invalidateAll();
+      await goto('/login');
+      throw new Error('unauthorized');
+    }
+    return res;
   }
-}
+
+  async function getProject() {
+    loadError = null;
+    project = null;
+    const id = $page.params.id;
+    if (!id) {
+      loaded = true;
+      return;
+    }
+
+    try {
+      const res = await authedFetch(`/api/getProject/${id}`);
+      if (!res.ok) {
+        loadError = `HTTP ${res.status}: ${await res.text()}`;
+        project = null;
+        return;
+      }
+
+      project = await res.json();
+    } catch (err) {
+      if (err instanceof Error && err.message === 'unauthorized') {
+        return;
+      }
+      loadError = err instanceof Error ? err.message : 'Network error';
+      project = null;
+    } finally {
+      loaded = true;
+    }
+  }
+
+  async function deleteProject() {
+    if (!project) return;
+
+    try {
+      const res = await authedFetch(`/api/projects/${project.id}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        alert('Failed to delete project');
+        return;
+      }
+
+      await invalidateAll();
+      await goto('/');
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to delete project');
+      }
+    }
+  }
 
   async function addTask(e: SubmitEvent) {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
 
-    let rawLabels = formData.get("labels");
+    let rawLabels = formData.get('labels');
     let labels: string[] = [];
     if (rawLabels) {
       labels = rawLabels
         .toString()
-        .split(",")
+        .split(',')
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
     }
 
     const payload = {
-      title: formData.get("title"),
-      desc: formData.get("description"),
+      title: formData.get('title'),
+      desc: formData.get('description'),
       labels
     };
 
-    const res = await fetch(`/api/projects/${project.id}/tasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const res = await authedFetch(`/api/projects/${project.id}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    const created = await res.json();
-    const colKey = created.status || "open";
-    project[colKey] = [...(project[colKey] || []), created];
+      if (!res.ok) {
+        alert('Failed to create task');
+        return;
+      }
 
-    showAddTask = false;
-    form.reset();
+      const created = await res.json();
+      const colKey = created.status || 'open';
+      project[colKey] = [...(project[colKey] || []), created];
+
+      showAddTask = false;
+      form.reset();
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to create task');
+      }
+    }
   }
 
   async function deleteTask(taskId: number) {
-    const res = await fetch(
-      `/api/projects/${project.id}/tasks/${taskId}`,
-      { method: "DELETE" }
-    );
+    try {
+      const res = await authedFetch(
+        `/api/projects/${project.id}/tasks/${taskId}`,
+        { method: 'DELETE' }
+      );
 
-    if (res.ok) {
+      if (!res.ok) {
+        alert('Failed to delete task');
+        return;
+      }
+
       for (const col of columns) {
         if (project[col.key]) {
           project[col.key] = project[col.key].filter((t: any) => t.id !== taskId);
         }
+      }
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to delete task');
       }
     }
   }
@@ -137,16 +186,15 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
   project[toKey] = [...(project[toKey] || []), optimistic];
 
   try {
-    const res = await fetch(`/api/projects/${project.id}/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+    const res = await authedFetch(`/api/projects/${project.id}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
     const updated = await res.json();
 
-    // patch only defined fields so we don't nuke title/desc/labels when backend omits them
     project[toKey] = project[toKey].map((t: any) =>
       t.id === taskId
         ? patchDefined(t, {
@@ -158,12 +206,13 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
         : t
     );
   } catch (err: any) {
-    // revert on failure
     project[toKey] = (project[toKey] || []).filter((t: any) => t.id !== taskId);
     if (fromKey) {
       project[fromKey] = [...(project[fromKey] || []), existing];
     }
-    alert(err?.message ?? "Failed to update task");
+    if (!(err instanceof Error && err.message === 'unauthorized')) {
+      alert(err?.message ?? 'Failed to update task');
+    }
   }
 }
 
@@ -182,14 +231,25 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
       status: formData.get("status")
     };
 
-    const res = await fetch(`/api/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const res = await authedFetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    project = await res.json();
-    showEditProject = false;
+      if (!res.ok) {
+        alert('Failed to update project');
+        return;
+      }
+
+      project = await res.json();
+      showEditProject = false;
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to update project');
+      }
+    }
   }
 
   async function addNote(e: SubmitEvent) {
@@ -199,26 +259,46 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
 
     const payload = { desc: formData.get("note") };
 
-    const res = await fetch(`/api/projects/${project.id}/notes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const res = await authedFetch(`/api/projects/${project.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    const created = await res.json();
-    project.notes = [...(project.notes || []), created];
+      if (!res.ok) {
+        alert('Failed to add note');
+        return;
+      }
 
-    showAddNote = false;
-    form.reset();
+      const created = await res.json();
+      project.notes = [...(project.notes || []), created];
+
+      showAddNote = false;
+      form.reset();
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to add note');
+      }
+    }
   }
   async function deleteNote(noteId: number) {
-    const res = await fetch(
-      `/api/projects/${project.id}/notes/${noteId}`,
-      { method: "DELETE" }
-    );
+    try {
+      const res = await authedFetch(
+        `/api/projects/${project.id}/notes/${noteId}`,
+        { method: 'DELETE' }
+      );
 
-    if (res.ok) {
+      if (!res.ok) {
+        alert('Failed to delete note');
+        return;
+      }
+
       project.notes = (project.notes || []).filter((n: any) => n.id !== noteId);
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'unauthorized')) {
+        alert('Failed to delete note');
+      }
     }
   }
 
@@ -311,19 +391,19 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
               <div class="card-actions">
                 <div class="left-actions">
                   {#if colIdx > 0}
-                    <button class="btn small move-left" title="Move left" onclick={() => updateTaskStatus(task.id, columns[colIdx - 1].key)}>
+                    <button class="btn small move-left" title="Move left" aria-label="Move task left" onclick={() => updateTaskStatus(task.id, columns[colIdx - 1].key)}>
                       <svg viewBox="0 0 24 24" class="icon_t"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
                     </button>
                   {/if}
                 </div>
                 <div class="right-actions">
                   {#if colIdx < columns.length - 1}
-                    <button class="btn small move-right" title="Move right" onclick={() => updateTaskStatus(task.id, columns[colIdx + 1].key)}>
+                    <button class="btn small move-right" title="Move right" aria-label="Move task right" onclick={() => updateTaskStatus(task.id, columns[colIdx + 1].key)}>
                       <svg viewBox="0 0 24 24" class="icon_t"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
                     </button>
                   {/if}
                   
-                  <button class="btn small delete-task" title="Delete task" onclick={() => deleteTask(task.id)}>
+                  <button class="btn small delete-task" title="Delete task" aria-label="Delete task" onclick={() => deleteTask(task.id)}>
                     <svg viewBox="0 0 24 24" class="icon_t"><path d="M6 7h12M10 11v6m4-6v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" stroke="currentColor" stroke-width="2" fill="none"/></svg>
                   </button>
                 </div>
@@ -436,8 +516,3 @@ async function updateTaskStatus(taskId: number, newStatus: string) {
     <p>Project not found</p>
   {/if}
 {/if}
-
-
-
-
-

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto, invalidateAll } from "$app/navigation";
   import { onMount } from "svelte";
   import Modal from "$lib/components/Modal.svelte";
   
@@ -6,6 +7,8 @@
   let statusFilter = $state("all");
   let allProjects = $state<any[]>([])
   let showAddProject = $state(false);
+  let loading = $state(true);
+  let loadError = $state("");
 
   let filteredProjects = $derived.by(() => {
     const searchTerm = (search ?? "").toLowerCase();
@@ -21,8 +24,28 @@
   });
 
   async function getProjects() {
-    const res = await fetch("/api/getProjects");
-    return await res.json();
+    loadError = "";
+    loading = true;
+
+    try {
+      const res = await fetch("/api/getProjects");
+
+      if (res.status === 401) {
+        await invalidateAll();
+        await goto("/login");
+        return [];
+      }
+
+      if (!res.ok) {
+        loadError = "Unable to fetch projects";
+        console.error("getProjects failed", await res.text());
+        return [];
+      }
+
+      return await res.json();
+    } finally {
+      loading = false;
+    }
   }
 
   async function addProject(event: SubmitEvent) {
@@ -44,6 +67,12 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+
+    if (res.status === 401) {
+      await invalidateAll();
+      await goto("/login");
+      return;
+    }
 
     if (!res.ok) {
       console.error("addProject failed", await res.text());
@@ -102,41 +131,47 @@
     </div>
 
     <!-- grid -->
-    <div class="projects">
-      {#each filteredProjects as project}
-        <article class="project-card">
-          <header>
-            <h3>{project.title}</h3>
-            <span class="badge {project.status}">{project.status}</span>
-          </header>
-          <p class="desc">{project.short_description}</p>
-          <ul class="meta">
-            <li>{project.open.length} open tasks</li>
-            <li>{project.in_progress.length} in progress</li>
-            <li>{project.done.length} done</li>
-          </ul>
-          <footer>
-            <a
-              class="link"
-              href="/project/{project.id}"
-              aria-label="Open project">open →</a
-            >
-          </footer>
-        </article>
-      {/each}
+    {#if loading}
+      <p class="status">Loading projects…</p>
+    {:else if loadError}
+      <p class="status error">{loadError}</p>
+    {:else}
+      <div class="projects">
+        {#each filteredProjects as project}
+          <article class="project-card">
+            <header>
+              <h3>{project.title}</h3>
+              <span class="badge {project.status}">{project.status}</span>
+            </header>
+            <p class="desc">{project.short_description}</p>
+            <ul class="meta">
+              <li>{project.open.length} open tasks</li>
+              <li>{project.in_progress.length} in progress</li>
+              <li>{project.done.length} done</li>
+            </ul>
+            <footer>
+              <a
+                class="link"
+                href="/project/{project.id}"
+                aria-label="Open project">open →</a
+              >
+            </footer>
+          </article>
+        {/each}
 
-      <button
-        type="button"
-        class="project-card add-card"
-        onclick={() => (showAddProject = true)}
-        aria-haspopup="dialog"
-      >
-        <div class="add-inner">
-          <span class="plus">+</span>
-          <p>New project</p>
-        </div>
-      </button>
-    </div>
+        <button
+          type="button"
+          class="project-card add-card"
+          onclick={() => (showAddProject = true)}
+          aria-haspopup="dialog"
+        >
+          <div class="add-inner">
+            <span class="plus">+</span>
+            <p>New project</p>
+          </div>
+        </button>
+      </div>
+    {/if}
   </section>
 
   <!-- add project modal -->

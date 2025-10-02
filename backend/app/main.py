@@ -1,10 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal
 import sqlite3
 import json
 import os
+import base64
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+import re
 
 
 # DB
@@ -27,7 +32,9 @@ def init_db():
         description       TEXT,
         github            TEXT,
         website           TEXT,
-        status            TEXT NOT NULL CHECK(status IN ('idea','active','paused','done'))
+        status            TEXT NOT NULL CHECK(status IN ('idea','active','paused','done')),
+        user_id           INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
     )
     """)
     cur.execute("""
@@ -49,8 +56,133 @@ def init_db():
         FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS session (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+    )
+    """)
     con.commit()
+    ensure_default_user(con)
+    ensure_project_user_column(con)
     con.close()
+
+
+SESSION_COOKIE = "pb_session"
+SESSION_DURATION = timedelta(days=7)
+
+
+def ensure_default_user(con: sqlite3.Connection) -> None:
+    cur = con.cursor()
+    cur.execute("SELECT COUNT(*) FROM user")
+    (count,) = cur.fetchone() or (0,)
+    if count:
+        return
+
+    username = os.getenv("DEFAULT_ADMIN_USER", "admin")
+    password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
+    password_hash = hash_password(password)
+    cur.execute(
+        "INSERT INTO user (username, password_hash) VALUES (?, ?)",
+        (username, password_hash),
+    )
+    con.commit()
+
+
+def ensure_project_user_column(con: sqlite3.Connection) -> None:
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(project)")
+    columns = {row[1] for row in cur.fetchall()}
+    if "user_id" in columns:
+        return
+
+    cur.execute("ALTER TABLE project ADD COLUMN user_id INTEGER")
+    cur.execute("UPDATE project SET user_id = 1 WHERE user_id IS NULL")
+    con.commit()
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    derived = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+    payload = salt + derived
+    return base64.urlsafe_b64encode(payload).decode()
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        payload = base64.urlsafe_b64decode(encoded.encode())
+    except (ValueError, TypeError):
+        return False
+
+    salt, stored = payload[:16], payload[16:]
+    try:
+        derived = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+    except ValueError:
+        return False
+    return secrets.compare_digest(stored, derived)
+
+
+def new_session_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def upsert_session(con: sqlite3.Connection, user_id: int) -> tuple[str, datetime]:
+    token = new_session_token()
+    now = datetime.utcnow()
+    expires = now + SESSION_DURATION
+    cur = con.cursor()
+    cur.execute(
+        "INSERT INTO session (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+        (token, user_id, expires.isoformat(), now.isoformat()),
+    )
+    con.commit()
+    return token, expires
+
+
+def get_user_by_session(token: str | None) -> dict | None:
+    if not token:
+        return None
+
+    con = get_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT user.id, user.username, session.expires_at
+            FROM session
+            JOIN user ON user.id = session.user_id
+            WHERE session.token = ?
+            """,
+            (token,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        expires_at = datetime.fromisoformat(row["expires_at"])
+        if expires_at < datetime.utcnow():
+            cur.execute("DELETE FROM session WHERE token = ?", (token,))
+            con.commit()
+            return None
+        return {"id": row["id"], "username": row["username"]}
+    finally:
+        con.close()
+
+
+def require_user(request: Request) -> dict:
+    user = get_user_by_session(request.cookies.get(SESSION_COOKIE))
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return user
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict:
@@ -123,6 +255,50 @@ class ProjectModel(BaseModel):
     open: list[dict]
     in_progress: list[dict]
     done: list[dict]
+    # user_id intentionally hidden from API responses
+
+
+class UserModel(BaseModel):
+    id: int
+    username: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    user: UserModel
+
+
+class SignupRequest(BaseModel):
+    username: str
+    password: str
+
+
+PASSWORD_SPECIALS = set("!@#$%^&*()-_=+[]{}|;:'\",.<>/?`~")
+
+
+def validate_password_policy(password: str) -> list[str]:
+    errors: list[str] = []
+
+    if len(password) < 10:
+        errors.append("Password must be at least 10 characters long")
+
+    if not re.search(r"[A-Z]", password):
+        errors.append("Password must contain at least one uppercase letter")
+
+    if not re.search(r"[a-z]", password):
+        errors.append("Password must contain at least one lowercase letter")
+
+    if not re.search(r"[0-9]", password):
+        errors.append("Password must contain at least one digit")
+
+    if not any(char in PASSWORD_SPECIALS for char in password):
+        errors.append("Password must contain at least one special character")
+
+    return errors
 
 
 # FastAPI app
@@ -145,10 +321,10 @@ async def read_root():
 
 # -------- Projects --------
 @app.get("/getProjects", response_model=list[ProjectModel])
-async def get_projects():
+async def get_projects(user: dict = Depends(require_user)):
     con = get_conn()
     cur = con.cursor()
-    cur.execute("SELECT * FROM project ORDER BY id ASC")
+    cur.execute("SELECT * FROM project WHERE user_id = ? ORDER BY id ASC", (user["id"],))
     rows = cur.fetchall()
     con.close()
     return build_projects(rows)
@@ -156,11 +332,14 @@ async def get_projects():
 
 
 @app.get("/getProject/{project_id}", response_model=ProjectModel)
-async def get_project(project_id: int):
+async def get_project(project_id: int, user: dict = Depends(require_user)):
     con = get_conn()
     try:
         cur = con.cursor()
-        cur.execute("SELECT * FROM project WHERE id = ?", (project_id,))
+        cur.execute(
+            "SELECT * FROM project WHERE id = ? AND user_id = ?",
+            (project_id, user["id"]),
+        )
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -171,13 +350,16 @@ async def get_project(project_id: int):
 
 
 @app.post("/addProject/", response_model=ProjectModel)
-async def add_project(project_data: ProjectCreate):
+async def add_project(
+    project_data: ProjectCreate,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
     cur.execute(
         """
-        INSERT INTO project (title, short_description, description, github, website, status)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO project (title, short_description, description, github, website, status, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             project_data.title,
@@ -186,6 +368,7 @@ async def add_project(project_data: ProjectCreate):
             project_data.github,
             project_data.website,
             project_data.status,
+            user["id"],
         ),
     )
     new_id = cur.lastrowid
@@ -209,12 +392,115 @@ async def add_project(project_data: ProjectCreate):
         "done": [],
     }
 
+
+@app.post("/login", response_model=LoginResponse)
+async def login(data: LoginRequest, response: Response):
+    con = get_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "SELECT id, password_hash FROM user WHERE username = ?",
+            (data.username,),
+        )
+        row = cur.fetchone()
+        if not row or not verify_password(data.password, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        token, expires = upsert_session(con, row["id"])
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            httponly=True,
+            max_age=int(SESSION_DURATION.total_seconds()),
+            expires=expires.strftime("%a, %d %b %Y %H:%M:%S GMT"),
+            samesite="lax",
+            secure=os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
+            path="/",
+        )
+        return {"user": {"id": row["id"], "username": data.username}}
+    finally:
+        con.close()
+
+
+@app.post("/signup", response_model=LoginResponse)
+async def signup(data: SignupRequest, response: Response):
+    username = data.username.strip()
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
+
+    password_errors = validate_password_policy(data.password)
+    if password_errors:
+        raise HTTPException(status_code=400, detail=password_errors)
+
+    con = get_conn()
+    try:
+        cur = con.cursor()
+        cur.execute("SELECT 1 FROM user WHERE username = ?", (username,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Username already taken")
+
+        password_hash = hash_password(data.password)
+        try:
+            cur.execute(
+                "INSERT INTO user (username, password_hash) VALUES (?, ?)",
+                (username, password_hash),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=409, detail="Username already taken")
+
+        user_id = cur.lastrowid
+        con.commit()
+
+        token, expires = upsert_session(con, user_id)
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            httponly=True,
+            max_age=int(SESSION_DURATION.total_seconds()),
+            expires=expires.strftime("%a, %d %b %Y %H:%M:%S GMT"),
+            samesite="lax",
+            secure=os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
+            path="/",
+        )
+
+        return {"user": {"id": user_id, "username": username}}
+    finally:
+        con.close()
+
+
+@app.post("/logout")
+async def logout(request: Request, response: Response):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        con = get_conn()
+        try:
+            cur = con.cursor()
+            cur.execute("DELETE FROM session WHERE token = ?", (token,))
+            con.commit()
+        finally:
+            con.close()
+
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/me", response_model=UserModel)
+async def get_me(user: dict = Depends(require_user)):
+    return user
+
 @app.patch("/projects/{project_id}", response_model=ProjectModel)
-async def edit_project(project_id: int, updates: dict):
+async def edit_project(
+    project_id: int,
+    updates: dict,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
     if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
@@ -246,16 +532,19 @@ async def edit_project(project_id: int, updates: dict):
     con.commit()
     con.close()
     # chane in future to return updated fields only
-    return await get_project(project_id)
+    return await get_project(project_id, user)
 
 
 # -------- Tasks --------
 @app.post("/projects/{project_id}/tasks", response_model=dict)
-async def add_task(project_id: int, task: dict):
+async def add_task(project_id: int, task: dict, user: dict = Depends(require_user)):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
     if cur.fetchone() is None:
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
@@ -304,11 +593,18 @@ async def add_task(project_id: int, task: dict):
 
 
 @app.delete("/projects/{project_id}/tasks/{task_id}", response_model=dict)
-async def delete_task(project_id: int, task_id: int):
+async def delete_task(
+    project_id: int,
+    task_id: int,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
     if cur.fetchone() is None:
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
@@ -328,9 +624,22 @@ async def delete_task(project_id: int, task_id: int):
 
 
 @app.patch("/projects/{project_id}/tasks/{task_id}", response_model=dict)
-async def update_task(project_id: int, task_id: int, updates: dict):
+async def update_task(
+    project_id: int,
+    task_id: int,
+    updates: dict,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
+
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cur.execute(
         "SELECT 1 FROM task WHERE id = ? AND project_id = ?",
@@ -387,11 +696,14 @@ async def update_task(project_id: int, task_id: int, updates: dict):
 
 
 @app.delete("/projects/{project_id}", response_model=dict)
-async def delete_project(project_id: int):
+async def delete_project(project_id: int, user: dict = Depends(require_user)):
     con = get_conn()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
     if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
@@ -405,14 +717,21 @@ async def delete_project(project_id: int):
 # -------- Notes --------
 
 @app.post("/projects/{project_id}/notes", response_model=dict)
-async def add_note(project_id: int, note: dict):
+async def add_note(
+    project_id: int,
+    note: dict,
+    user: dict = Depends(require_user),
+):
     body = (note.get("desc") or "").strip()
     if not body:
         raise HTTPException(status_code=400, detail="Note body cannot be empty")
 
     con = get_conn()
     cur = con.cursor()
-    cur.execute("SELECT id FROM project WHERE id = ?", (project_id,))
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
     if not cur.fetchone():
         con.close()
         raise HTTPException(status_code=404, detail="Project not found")
@@ -426,9 +745,22 @@ async def add_note(project_id: int, note: dict):
 
 
 @app.patch("/projects/{project_id}/notes/{note_id}", response_model=dict)
-async def edit_note(project_id: int, note_id: int, updates: dict):
+async def edit_note(
+    project_id: int,
+    note_id: int,
+    updates: dict,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
+
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cur.execute(
         "SELECT id FROM note WHERE id = ? AND project_id = ?",
@@ -455,9 +787,21 @@ async def edit_note(project_id: int, note_id: int, updates: dict):
 
 
 @app.delete("/projects/{project_id}/notes/{note_id}", response_model=dict)
-async def delete_note(project_id: int, note_id: int):
+async def delete_note(
+    project_id: int,
+    note_id: int,
+    user: dict = Depends(require_user),
+):
     con = get_conn()
     cur = con.cursor()
+
+    cur.execute(
+        "SELECT id FROM project WHERE id = ? AND user_id = ?",
+        (project_id, user["id"]),
+    )
+    if not cur.fetchone():
+        con.close()
+        raise HTTPException(status_code=404, detail="Project not found")
 
     cur.execute(
         "SELECT id FROM note WHERE id = ? AND project_id = ?",
@@ -475,4 +819,3 @@ async def delete_note(project_id: int, note_id: int):
     con.close()
 
     return {"success": True, "deleted_note_id": note_id}
-
