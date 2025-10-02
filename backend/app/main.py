@@ -89,8 +89,8 @@ def ensure_default_user(con: sqlite3.Connection) -> None:
     if count:
         return
 
-    username = os.getenv("DEFAULT_ADMIN_USER", "admin")
-    password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
+    username = os.getenv("DEFAULT_ADMIN_USER")
+    password = os.getenv("DEFAULT_ADMIN_PASSWORD")
     password_hash = hash_password(password)
     cur.execute(
         "INSERT INTO user (username, password_hash) VALUES (?, ?)",
